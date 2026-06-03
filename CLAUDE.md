@@ -1,6 +1,6 @@
-# [Project Name]
+# DWCOA Financials
 
-[One-line description of what this app is. Replace when this template is copied.]
+<!-- Financial management dashboard for the Denny Way Condo Owners Association — tracks transactions, budgets, and dues for its 9 units, and generates board-ready reports. -->
 
 ## Repo map
 - `declaration.md` — what this project is and why it exists
@@ -24,76 +24,33 @@ Development runs in Claude Code cloud sandboxes attached to this GitHub repo.
 - Development branch pattern: `claude/<short-task-name>-<suffix>`. The sandbox provisions this branch per session — commit to it, never create a new one. Open a PR to `main` when work is complete. Do not add reviewers or assignees — the repo owner is the sole maintainer and the PR author, so GitHub rejects requesting their review and there is no clean assignee path in this setup.
 
 ## Run, test, deps
-Pick the block that matches your project's stack. Uncomment it and delete the others. The header on each block describes when to use it.
+Two-part repo: a Python/FastAPI backend and a React/Vite frontend. The backend serves the built frontend as static assets in production (single Fly app).
 
-<!--
-### Python service (a backend program or MCP server, typically deployed to Eviebot)
-- Install: `python3.11 -m venv .venv && .venv/bin/pip install -e .`
-  Creates an isolated Python environment in `.venv/` (a hidden folder) and installs this project into it. The `-e` flag means "editable" — code changes take effect without reinstalling.
-- Run locally: `.venv/bin/<script-name>` where `<script-name>` is defined in `pyproject.toml` under `[project.scripts]`.
-- Tests: `.venv/bin/pytest` — pytest is the standard Python testing framework.
+### Backend (Python — FastAPI, `pyproject.toml`)
+- Install: `cd backend && python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev]"`
+  Creates an isolated Python environment in `.venv/` and installs the project (with dev/test extras) in editable mode — code changes take effect without reinstalling.
+- Run locally: `.venv/bin/uvicorn app.main:app --reload` — starts the dev API server with auto-reload.
+- Tests: `.venv/bin/pytest`
 - Package manager / lockfile: `pyproject.toml` describes dependencies. To add one, edit `pyproject.toml` and re-run the install command.
--->
 
-<!--
-### Web frontend (React + Vite + Tailwind + shadcn/ui — the constitution's default frontend stack)
-- Install: `pnpm install`
+### Frontend (React + TypeScript + Vite + Tailwind + shadcn/ui)
+- Install: `cd frontend && pnpm install`
   pnpm is a JavaScript package manager (an alternative to npm). Installs everything listed in `package.json`.
 - Run locally: `pnpm dev` — starts the Vite dev server. Open http://localhost:5173 in a browser.
-- Tests: `pnpm test` — runs Vitest (the test runner that pairs with Vite).
+- Tests: `pnpm test` — runs Vitest.
+- Production build: `pnpm build` — emits static assets and serves as the CI type-check (`tsc`).
 - Package manager / lockfile: `pnpm` with `pnpm-lock.yaml`. To add a dependency: `pnpm add <package-name>`.
--->
-
-<!--
-### Next.js web app (React with built-in routing and server-side rendering)
-- Install: `pnpm install`
-- Run locally: `pnpm dev` — opens http://localhost:3000.
-- Tests: `pnpm test`
-- Package manager / lockfile: `pnpm` with `pnpm-lock.yaml`. To add a dependency: `pnpm add <package-name>`.
--->
-
-<!--
-### iOS or macOS app (Xcode + Swift)
-- Install: open `<ProjectName>.xcodeproj` in Xcode. Swift Package Manager (SwiftPM) resolves dependencies automatically on open. No separate install command.
-- Run locally: in Xcode, press Run (⌘R) to launch in the chosen simulator or device.
-- Tests: in Xcode, press Test (⌘U). Or from the command line:
-  `xcodebuild test -scheme <SchemeName> -destination 'platform=iOS Simulator,name=iPhone 15'`
-- Package manager / lockfile: Swift Package Manager (`Package.resolved` — committed automatically by Xcode).
--->
 
 
 ## Deployment target
-Pick one. Uncomment the matching block and delete the others.
 
-<!--
-### Eviebot (headless always-on Mac mini)
-- Service path: `/Users/eviebot/services/<repo-name>/` (must exist before first deploy)
-- Venv: `.venv/` inside the service path
-- Process management: `launchd`; plists live in `deploy/`
-- First load is manual on Eviebot (the runner's non-Aqua session can't bootstrap):
-  `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<plist>`
-- Subsequent deploys: `launchctl kickstart -k gui/$(id -u)/<label>`
-- Deploy via GitHub Actions on push to `main`, on this repo's own Eviebot self-hosted runner (`runs-on: [self-hosted, macOS, ARM64]`).
-  Workflow: rsync → create venv → pip install → write `.env` from secrets → kickstart → **post-deploy health check**.
-- A deploy is "successful" only if the post-deploy health check against the live service passes — a zero exit from `launchctl kickstart` confirms the kick was sent, not that the service is reachable. The workflow must curl a health endpoint (or equivalent) and fail the job if it doesn't return 2xx within a bounded retry window.
-- Before choosing a launchctl label: `launchctl list | grep eviebot` to avoid collisions.
--->
-
-<!--
-### AWS (public-facing)
-- Account: `070840362692` (user: `eve-hwang`)
-- Region: `us-east-1` (confirm per project)
-- Credentials: named profiles only; never hardcode keys
-- Deploy via GitHub Actions on push to `main`
-- A deploy is "successful" only if a post-deploy health check against the live service passes — CloudFormation/ECS/Lambda success codes confirm provisioning, not reachability. The workflow must hit a health endpoint (ALB target check, function invocation, etc.) and fail the job if it doesn't return healthy within a bounded retry window.
--->
-
-<!--
-### Apple platform (iOS / macOS via the Xcode Claude extension)
-- Specs live in this repo; build runs in Xcode locally
-- No CI deploy path; release is a manual Xcode build and submission
-- "Deploy success" for an Apple build means the archive builds, signs, and uploads cleanly. There is no live-service health check; treat App Store / TestFlight acceptance as the equivalent gate.
--->
+### Fly.io (single always-on app)
+- App + config: `fly.toml` at repo root; a Dockerfile builds the backend image and bundles the built frontend, which the backend serves as static assets (one deployable, no separate origin / CORS setup).
+- Persistence: SQLite on a mounted Fly volume; periodic backup (e.g. Litestream or scheduled volume snapshot).
+- Region: primary `sea` (Seattle, near the HOA).
+- Secrets: set via `fly secrets set` (mirror of the repo's GitHub Actions secrets); the deploy workflow authenticates with `FLY_API_TOKEN`.
+- Deploy via GitHub Actions on push to `main`, on a GitHub-hosted runner: `flyctl deploy --remote-only`. No self-hosted runner needed.
+- A deploy is "successful" only if a post-deploy health check against the live app passes — a zero exit from `flyctl deploy` confirms the release was created, not that the app is reachable. The workflow must curl a health endpoint and fail the job if it doesn't return 2xx within a bounded retry window.
 
 ## Secrets
 - Canonical source: the **1Password "Eviebot" vault**, one item per service (item name matches the repo), each secret a custom field named exactly for its env var.
