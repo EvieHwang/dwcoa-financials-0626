@@ -1,0 +1,796 @@
+openapi: 3.0.3
+info:
+  title: DWCOA Financial Tracker API
+  description: API for the Denny Way Condo Owners Association financial management tool
+  version: 1.0.0
+  contact:
+    name: DWCOA Treasurer
+
+servers:
+  - url: https://api.dwcoa-financials.example.com
+    description: Production API
+
+security:
+  - BearerAuth: []
+
+paths:
+  # Authentication
+  /auth/login:
+    post:
+      summary: Authenticate with password
+      operationId: login
+      security: []
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+                  description: Admin or board password
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT session token (24 hour expiry)
+                  role:
+                    type: string
+                    enum: [admin, board]
+                    description: Access level
+                  expires_at:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/verify:
+    get:
+      summary: Verify token validity
+      operationId: verifyToken
+      tags:
+        - Authentication
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  role:
+                    type: string
+                    enum: [admin, board]
+                  expires_at:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Dashboard
+  /dashboard:
+    get:
+      summary: Get dashboard data
+      operationId: getDashboard
+      tags:
+        - Dashboard
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+          description: Budget year (defaults to current year)
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Transactions
+  /transactions:
+    get:
+      summary: List transactions
+      operationId: listTransactions
+      tags:
+        - Transactions
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+        - name: account
+          in: query
+          schema:
+            type: string
+            enum: [Savings, Checking, Reserve Fund]
+        - name: category_id
+          in: query
+          schema:
+            type: integer
+        - name: needs_review
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /transactions/upload:
+    post:
+      summary: Upload transactions CSV
+      operationId: uploadTransactions
+      tags:
+        - Transactions
+      description: |
+        Upload a CSV file containing bank transactions.
+        This replaces all existing transaction data.
+        Admin access required.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV file with bank transactions
+      responses:
+        '200':
+          description: Upload successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  stats:
+                    type: object
+                    properties:
+                      total_rows:
+                        type: integer
+                      categorized:
+                        type: integer
+                      needs_review:
+                        type: integer
+                      uncategorized:
+                        type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /transactions/download:
+    get:
+      summary: Download transactions CSV
+      operationId: downloadTransactions
+      tags:
+        - Transactions
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+          description: Filter by year (optional, all if omitted)
+      responses:
+        '200':
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /transactions/{id}:
+    patch:
+      summary: Update transaction category
+      operationId: updateTransaction
+      tags:
+        - Transactions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category_id:
+                  type: integer
+                  nullable: true
+                needs_review:
+                  type: boolean
+      responses:
+        '200':
+          description: Transaction updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Categories
+  /categories:
+    get:
+      summary: List categories
+      operationId: listCategories
+      tags:
+        - Categories
+      parameters:
+        - name: active
+          in: query
+          schema:
+            type: boolean
+          description: Filter by active status
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [Income, Expense, Transfer, Internal]
+      responses:
+        '200':
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: Create category
+      operationId: createCategory
+      tags:
+        - Categories
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryInput'
+      responses:
+        '201':
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /categories/{id}:
+    patch:
+      summary: Update category
+      operationId: updateCategory
+      tags:
+        - Categories
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryInput'
+      responses:
+        '200':
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Budgets
+  /budgets:
+    get:
+      summary: List budgets
+      operationId: listBudgets
+      tags:
+        - Budgets
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of budgets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  year:
+                    type: integer
+                  budgets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Budget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: Create or update budget
+      operationId: upsertBudget
+      tags:
+        - Budgets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetInput'
+      responses:
+        '200':
+          description: Budget saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /budgets/copy:
+    post:
+      summary: Copy budgets from previous year
+      operationId: copyBudgets
+      tags:
+        - Budgets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - from_year
+                - to_year
+              properties:
+                from_year:
+                  type: integer
+                to_year:
+                  type: integer
+      responses:
+        '200':
+          description: Budgets copied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  count:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Dues
+  /dues:
+    get:
+      summary: Get dues status by unit
+      operationId: getDuesStatus
+      tags:
+        - Dues
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+          description: Budget year (defaults to current year)
+      responses:
+        '200':
+          description: Dues status by unit
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  year:
+                    type: integer
+                  total_budget:
+                    type: number
+                    format: double
+                  units:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DuesStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Reports
+  /reports/pdf:
+    get:
+      summary: Generate PDF report
+      operationId: generatePdfReport
+      tags:
+        - Reports
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+          description: Report year (defaults to current year)
+      responses:
+        '200':
+          description: PDF report
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Review Queue
+  /review:
+    get:
+      summary: Get transactions needing review
+      operationId: getReviewQueue
+      tags:
+        - Review
+      responses:
+        '200':
+          description: Transactions needing review
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  count:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        account_number:
+          type: string
+        account_name:
+          type: string
+          enum: [Savings, Checking, Reserve Fund]
+        post_date:
+          type: string
+          format: date
+        check_number:
+          type: string
+          nullable: true
+        description:
+          type: string
+        debit:
+          type: number
+          format: double
+          nullable: true
+        credit:
+          type: number
+          format: double
+          nullable: true
+        status:
+          type: string
+        balance:
+          type: number
+          format: double
+        category:
+          $ref: '#/components/schemas/Category'
+        auto_category:
+          $ref: '#/components/schemas/Category'
+        confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+        needs_review:
+          type: boolean
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [Income, Expense, Transfer, Internal]
+        default_account:
+          type: string
+          nullable: true
+        timing:
+          type: string
+          enum: [monthly, quarterly, annual]
+        active:
+          type: boolean
+
+    CategoryInput:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [Income, Expense, Transfer, Internal]
+        default_account:
+          type: string
+          nullable: true
+        timing:
+          type: string
+          enum: [monthly, quarterly, annual]
+        active:
+          type: boolean
+
+    Budget:
+      type: object
+      properties:
+        id:
+          type: integer
+        year:
+          type: integer
+        category:
+          $ref: '#/components/schemas/Category'
+        annual_amount:
+          type: number
+          format: double
+        timing:
+          type: string
+          enum: [monthly, quarterly, annual]
+          nullable: true
+        ytd_budget:
+          type: number
+          format: double
+          description: Calculated YTD budget based on timing
+        ytd_actual:
+          type: number
+          format: double
+          description: Sum of actual transactions YTD
+        remaining:
+          type: number
+          format: double
+          description: ytd_budget - ytd_actual
+
+    BudgetInput:
+      type: object
+      required:
+        - year
+        - category_id
+        - annual_amount
+      properties:
+        year:
+          type: integer
+        category_id:
+          type: integer
+        annual_amount:
+          type: number
+          format: double
+        timing:
+          type: string
+          enum: [monthly, quarterly, annual]
+          nullable: true
+
+    DuesStatus:
+      type: object
+      properties:
+        unit:
+          type: string
+        ownership_pct:
+          type: number
+          format: double
+        expected_annual:
+          type: number
+          format: double
+        paid_ytd:
+          type: number
+          format: double
+        outstanding:
+          type: number
+          format: double
+
+    DashboardResponse:
+      type: object
+      properties:
+        last_updated:
+          type: string
+          format: date-time
+          nullable: true
+        year:
+          type: integer
+        accounts:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              balance:
+                type: number
+                format: double
+        total_cash:
+          type: number
+          format: double
+        income_summary:
+          type: object
+          properties:
+            ytd_budget:
+              type: number
+              format: double
+            ytd_actual:
+              type: number
+              format: double
+            categories:
+              type: array
+              items:
+                $ref: '#/components/schemas/Budget'
+        expense_summary:
+          type: object
+          properties:
+            ytd_budget:
+              type: number
+              format: double
+            ytd_actual:
+              type: number
+              format: double
+            remaining:
+              type: number
+              format: double
+            categories:
+              type: array
+              items:
+                $ref: '#/components/schemas/Budget'
+        dues_status:
+          type: array
+          items:
+            $ref: '#/components/schemas/DuesStatus'
+        review_count:
+          type: integer
+          description: Number of transactions needing review
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+  responses:
+    Unauthorized:
+      description: Authentication required or token invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: unauthorized
+            message: Invalid or expired token
+
+    Forbidden:
+      description: Insufficient permissions (admin required)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: forbidden
+            message: Admin access required
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: not_found
+            message: Resource not found
+
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: bad_request
+            message: Invalid CSV format

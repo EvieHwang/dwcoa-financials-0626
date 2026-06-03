@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DWCOA Financial Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Tabulator for Transaction Viewer -->
+    <link href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css" rel="stylesheet">
+    <script type="text/javascript" src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+    <!-- Chart.js for dashboard charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <h2>DWCOA Financial Dashboard</h2>
+            <p class="login-welcome">View association finances, track dues, and download reports.</p>
+            <p>Enter password to access</p>
+            <form id="login-form">
+                <input type="password" id="password" placeholder="Password" required>
+                <button type="submit">Login</button>
+                <p id="login-error" class="error hidden"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="dashboard" class="hidden">
+        <!-- Header -->
+        <header>
+            <div class="header-content">
+                <div class="header-title">
+                    <h1>DWCOA Financial Dashboard</h1>
+                    <span id="last-updated"></span>
+                </div>
+                <div class="header-meta">
+                    <span id="user-role" class="role-badge"></span>
+                    <button id="download-csv-btn" class="btn-header" title="Download all transactions as CSV">CSV</button>
+                    <button id="download-pdf-btn" class="btn-header" title="Download dashboard summary as PDF">PDF</button>
+                    <button id="logout-btn" class="btn-header">Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Loading Overlay (shown while fetching dashboard data) -->
+        <div id="loading-overlay" class="loading-overlay hidden">
+            <div class="loading-spinner"></div>
+            <p>Loading dashboard...</p>
+        </div>
+
+        <!-- Main Content -->
+        <main>
+            <!-- Admin Controls -->
+            <section id="admin-section" class="admin-only hidden">
+                <h2>Admin Controls</h2>
+                <div class="admin-buttons four-columns">
+                    <div class="admin-btn-group upload-group">
+                        <input type="file" id="csv-file" accept=".csv" class="hidden">
+                        <button id="choose-file-btn" class="btn-admin btn-fill">Choose File</button>
+                        <label class="replace-checkbox hidden">
+                            <input type="checkbox" id="replace-all-checkbox">
+                            Replace all
+                        </label>
+                        <button id="upload-btn" class="btn-admin" disabled>Upload</button>
+                    </div>
+                    <div class="admin-btn-group">
+                        <button id="review-btn" class="btn-admin btn-wide">Review Transactions (0)</button>
+                    </div>
+                    <div class="admin-btn-group">
+                        <button id="manage-rules-btn" class="btn-admin btn-wide">Manage Rules</button>
+                    </div>
+                    <div class="admin-btn-group">
+                        <button id="manage-budgets-btn" class="btn-admin btn-wide">Manage Budgets</button>
+                    </div>
+                </div>
+                <span id="upload-status"></span>
+            </section>
+
+            <!-- Financial Overview Group -->
+            <div class="financial-overview-group">
+                <!-- Account Balances -->
+                <section id="accounts-section">
+                <div class="section-header-row">
+                    <h2>Account Balances</h2>
+                    <div class="year-selector-inline">
+                        <label for="year-selector-main">Year:</label>
+                        <select id="year-selector-main">
+                            <option value="2025">2025</option>
+                            <option value="2026" selected>2026</option>
+                        </select>
+                    </div>
+                </div>
+                <p class="section-intro">Cash positions across all HOA accounts. Starting balance is Jan 1.</p>
+                <div class="accounts-layout">
+                    <table class="cash-position-table">
+                        <thead>
+                            <tr>
+                                <th>Account</th>
+                                <th>Starting</th>
+                                <th>Current</th>
+                                <th>Change</th>
+                            </tr>
+                        </thead>
+                        <tbody id="accounts-table-body">
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td>Total Cash</td>
+                                <td id="total-starting">$0.00</td>
+                                <td id="total-current">$0.00</td>
+                                <td id="total-change">$0.00</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <div class="account-summary-box">
+                        <h3>Reserve Fund Goal</h3>
+                        <div class="summary-row">
+                            <span>Goal:</span>
+                            <span id="reserve-goal">$0.00</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>Actual:</span>
+                            <span id="reserve-actual-change">$0.00</span>
+                        </div>
+                        <div class="summary-row remaining">
+                            <span>Difference:</span>
+                            <span id="reserve-difference">$0.00</span>
+                        </div>
+                    </div>
+                    <div class="account-summary-box">
+                        <h3>Net Income</h3>
+                        <div class="summary-row">
+                            <span>Income:</span>
+                            <span id="net-income-value">$0.00</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>Expenses:</span>
+                            <span id="net-expenses-value">$0.00</span>
+                        </div>
+                        <div class="summary-row remaining">
+                            <span>Net:</span>
+                            <span id="net-total">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts -->
+            <section id="charts-section">
+                <h2>Financial Overview <span class="section-date-indicator"></span></h2>
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <h3>Annual Budget vs Actual</h3>
+                        <canvas id="budget-chart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Monthly Cash Flow</h3>
+                        <canvas id="cashflow-chart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Income & Dues -->
+            <section id="income-section">
+                <h2>Income & Dues <span class="section-date-indicator"></span></h2>
+                <p class="section-intro">Dues collection status by unit. Each homeowner's budget is based on their ownership share.</p>
+                <div class="income-grid">
+                    <div class="income-summary-column">
+                        <div class="income-summary">
+                            <div class="summary-row">
+                                <span>Annual Budget:</span>
+                                <span id="dues-budget"></span>
+                            </div>
+                            <div class="summary-row">
+                                <span>Actual:</span>
+                                <span id="dues-actual"></span>
+                            </div>
+                            <div class="summary-row remaining">
+                                <span>Remaining:</span>
+                                <span id="dues-remaining"></span>
+                            </div>
+                        </div>
+                        <p class="section-note">*Past due balances are not included in the current year's operating budget.</p>
+                    </div>
+                    <table id="dues-table" class="dues-table compact">
+                        <thead>
+                            <tr>
+                                <th>Unit</th>
+                                <th>Share</th>
+                                <th>Past Due</th>
+                                <th>Budget</th>
+                                <th>Actual</th>
+                                <th>Remaining</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+                <!-- Expenses -->
+                <section id="expense-section">
+                    <h2>Operating Expenses <span class="section-date-indicator"></span></h2>
+                    <p class="section-intro">Spending by category compared to the annual budget.</p>
+                    <div id="expense-budget-notice" class="notice hidden"></div>
+                    <div class="expense-grid">
+                        <div class="expense-summary-column">
+                            <div class="expense-summary">
+                                <div class="summary-row">
+                                    <span>Annual Budget:</span>
+                                    <span id="expense-budget"></span>
+                                </div>
+                                <div class="summary-row">
+                                    <span>Actual:</span>
+                                    <span id="expense-actual"></span>
+                                </div>
+                                <div class="summary-row remaining">
+                                    <span>Remaining:</span>
+                                    <span id="expense-remaining"></span>
+                                </div>
+                            </div>
+                            <p class="section-note">*Reserve Contribution is funded through internal transfers with no outgoing expense.</p>
+                        </div>
+                        <table id="expense-table" class="budget-table compact">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th>Budget</th>
+                                    <th>Actual</th>
+                                    <th>Remaining</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div><!-- End financial-overview-group -->
+
+            <!-- My Account (Unit Statement) -->
+            <section id="my-account-section">
+                <h2>My Account</h2>
+                <p class="section-intro">Track your dues payments and see your recommended monthly payment to stay current.</p>
+                <div id="my-account-notice" class="notice hidden"></div>
+
+                <!-- Payment Info (consolidated row) -->
+                <div id="payment-info-section" class="payment-info-row">
+                    <div class="info-item">
+                        <label for="unit-selector">My Unit:</label>
+                        <select id="unit-selector">
+                            <option value="">Select...</option>
+                            <option value="101">101</option>
+                            <option value="102">102</option>
+                            <option value="103">103</option>
+                            <option value="201">201</option>
+                            <option value="202">202</option>
+                            <option value="203">203</option>
+                            <option value="301">301</option>
+                            <option value="302">302</option>
+                            <option value="303">303</option>
+                        </select>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Months Left <span class="info-hint">(in year)</span>:</span>
+                        <span id="months-remaining">11</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Original Monthly <span class="info-hint">(annual ÷ 12)</span>:</span>
+                        <span id="original-monthly">$0.00</span>
+                    </div>
+                    <div class="info-item highlight">
+                        <span class="info-label">Suggested Monthly <span class="info-hint">(to stay on track)</span>:</span>
+                        <span id="suggested-monthly">$0.00</span>
+                    </div>
+                </div>
+
+                <!-- Status Messages (shown conditionally) -->
+                <div id="paid-in-full-message" class="paid-message hidden">
+                    Paid in full for this year
+                </div>
+                <div id="credit-balance-message" class="credit-message hidden">
+                    Credit balance: <span id="credit-amount">$0.00</span>
+                </div>
+
+                <!-- Summary Table -->
+                <table id="statement-summary-table" class="statement-table">
+                    <thead>
+                        <tr>
+                            <th>Year</th>
+                            <th>Starting Balance</th>
+                            <th>Budgeted Dues</th>
+                            <th>Amount Paid</th>
+                            <th>Current Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="statement-summary-body"></tbody>
+                </table>
+
+                <!-- Payment History (Tabulator) -->
+                <div class="payment-history-section">
+                    <h3>Payment History</h3>
+                    <div id="payment-history-table"></div>
+                </div>
+            </section>
+
+            <!-- Transaction Viewer -->
+            <section id="transactions-section">
+                <h2>Transaction History</h2>
+                <p class="section-intro">Browse all transactions across HOA accounts. Use the column filters to search and sort.</p>
+                <div class="transactions-controls">
+                    <button id="export-transactions-btn" class="btn-secondary">Export CSV</button>
+                </div>
+                <div id="transactions-table"></div>
+            </section>
+
+        </main>
+
+        <!-- Footer -->
+        <footer>
+            <p>Denny Way Condo Owners Association</p>
+            <p>Questions or feature requests? Email <a href="mailto:eve@evehwang.com">eve@evehwang.com</a></p>
+        </footer>
+    </div>
+
+    <!-- Review Modal -->
+    <div id="review-modal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <h2>Review Transactions</h2>
+            <button id="close-review-btn" class="close-btn">&times;</button>
+            <div id="review-list"></div>
+        </div>
+    </div>
+
+    <!-- Budget Management Modal -->
+    <div id="budget-modal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <h2>Manage Budgets</h2>
+            <button id="close-budget-btn" class="close-btn">&times;</button>
+
+            <div class="budget-controls">
+                <div class="year-selector">
+                    <label for="budget-year">Year:</label>
+                    <select id="budget-year">
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026" selected>2026</option>
+                        <option value="2027">2027</option>
+                    </select>
+                    <label class="lock-checkbox">
+                        <input type="checkbox" id="budget-locked">
+                        Lock Budget
+                    </label>
+                </div>
+                <div class="copy-controls">
+                    <label>Copy from:</label>
+                    <select id="copy-from-year">
+                        <option value="2024">2024</option>
+                        <option value="2025" selected>2025</option>
+                        <option value="2026">2026</option>
+                    </select>
+                    <label>to:</label>
+                    <select id="copy-to-year">
+                        <option value="2025">2025</option>
+                        <option value="2026">2026</option>
+                        <option value="2027" selected>2027</option>
+                    </select>
+                    <button id="copy-budgets-btn" class="btn-secondary">Copy Budgets</button>
+                </div>
+            </div>
+
+            <div id="budget-lock-indicator" class="budget-locked-indicator hidden"></div>
+            <div id="budget-status" class="status-message hidden"></div>
+
+            <table id="budget-edit-table" class="budget-table">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Type</th>
+                        <th>Annual Amount</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="budget-edit-body"></tbody>
+            </table>
+
+            <div class="add-category-row">
+                <button id="add-category-btn" class="btn-secondary">+ Add Category</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rules Management Modal -->
+    <div id="rules-modal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <h2>Manage Rules</h2>
+            <button id="close-rules-btn" class="close-btn">&times;</button>
+
+            <p class="rules-description">Rules automatically categorize transactions. When a transaction description contains the match string (case-insensitive), it will be assigned to that category.</p>
+
+            <div id="rules-status" class="status-message hidden"></div>
+
+            <table id="rules-table" class="budget-table">
+                <thead>
+                    <tr>
+                        <th>Match String</th>
+                        <th>Category</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="rules-body"></tbody>
+            </table>
+
+            <div class="add-rule-row">
+                <input type="text" id="new-rule-pattern" placeholder="Match string...">
+                <select id="new-rule-category"></select>
+                <button id="add-rule-btn" class="btn-primary">Add Rule</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

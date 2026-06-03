@@ -1,0 +1,315 @@
+# OpenAPI Specification for Unit Statement Tracking
+# Version: 1.0.0
+
+openapi: 3.0.3
+info:
+  title: DWCOA Financials - Statement API
+  version: 1.0.0
+  description: API endpoints for unit statement tracking feature
+
+servers:
+  - url: /api
+    description: Relative API path
+
+paths:
+  /statement/{unit}:
+    get:
+      summary: Get unit statement
+      description: |
+        Returns comprehensive financial statement for a specific unit including
+        prior year summary, current year status, payment guidance, and recent payments.
+      operationId: getStatement
+      tags:
+        - Statements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: unit
+          in: path
+          required: true
+          description: Unit number (101, 102, 103, 201, 202, 203, 301, 302, 303)
+          schema:
+            type: string
+            enum: ["101", "102", "103", "201", "202", "203", "301", "302", "303"]
+        - name: year
+          in: query
+          required: false
+          description: Budget year (defaults to current year)
+          schema:
+            type: integer
+            example: 2026
+      responses:
+        '200':
+          description: Statement data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatementResponse'
+        '400':
+          description: Invalid unit number
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /statement/{unit}/payments:
+    get:
+      summary: Get full payment history
+      description: Returns all payments for a unit, optionally filtered by year
+      operationId: getPaymentHistory
+      tags:
+        - Statements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: unit
+          in: path
+          required: true
+          description: Unit number
+          schema:
+            type: string
+            enum: ["101", "102", "103", "201", "202", "203", "301", "302", "303"]
+        - name: year
+          in: query
+          required: false
+          description: Filter by year (omit for all years)
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Payment history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentHistoryResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /budgets/lock/{year}:
+    post:
+      summary: Lock or unlock budget year
+      description: |
+        Locks or unlocks a budget year. When locking, automatically calculates
+        carryover balances for all units (unless manually set).
+      operationId: lockBudget
+      tags:
+        - Budgets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                locked:
+                  type: boolean
+                  description: True to lock, false to unlock
+                  default: true
+      responses:
+        '200':
+          description: Lock status updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  year:
+                    type: integer
+                  locked:
+                    type: boolean
+                  locked_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  carryovers_calculated:
+                    type: integer
+                    description: Number of units with auto-calculated carryovers (only when locking)
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    StatementResponse:
+      type: object
+      required:
+        - unit
+        - ownership_pct
+        - current_year
+        - recent_payments
+      properties:
+        unit:
+          type: string
+          example: "201"
+        ownership_pct:
+          type: number
+          format: float
+          example: 0.104
+        current_year:
+          $ref: '#/components/schemas/CurrentYearSummary'
+        prior_year:
+          $ref: '#/components/schemas/PriorYearSummary'
+          nullable: true
+        recent_payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+
+    CurrentYearSummary:
+      type: object
+      required:
+        - year
+        - budget_locked
+        - carryover_balance
+        - annual_dues
+        - total_due
+        - paid_ytd
+        - remaining_balance
+        - standard_monthly
+        - months_remaining
+        - suggested_monthly
+      properties:
+        year:
+          type: integer
+          example: 2026
+        budget_locked:
+          type: boolean
+          example: true
+        carryover_balance:
+          type: number
+          format: float
+          description: Positive = owes, negative = credit
+          example: 160.00
+        annual_dues:
+          type: number
+          format: float
+          example: 4104.00
+        total_due:
+          type: number
+          format: float
+          description: carryover_balance + annual_dues
+          example: 4264.00
+        paid_ytd:
+          type: number
+          format: float
+          example: 700.00
+        remaining_balance:
+          type: number
+          format: float
+          description: total_due - paid_ytd
+          example: 3564.00
+        standard_monthly:
+          type: number
+          format: float
+          description: annual_dues / 12
+          example: 342.00
+        months_remaining:
+          type: integer
+          description: Months left in year including current
+          example: 10
+        suggested_monthly:
+          type: number
+          format: float
+          description: remaining_balance / months_remaining
+          example: 356.40
+
+    PriorYearSummary:
+      type: object
+      required:
+        - year
+        - annual_dues_budgeted
+        - total_paid
+        - balance_carried_forward
+      properties:
+        year:
+          type: integer
+          example: 2025
+        annual_dues_budgeted:
+          type: number
+          format: float
+          example: 3960.00
+        total_paid:
+          type: number
+          format: float
+          example: 3800.00
+        balance_carried_forward:
+          type: number
+          format: float
+          description: Positive = underpaid, negative = credit
+          example: 160.00
+
+    Payment:
+      type: object
+      required:
+        - date
+        - amount
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2026-02-03"
+        amount:
+          type: number
+          format: float
+          example: 350.00
+        description:
+          type: string
+          description: Transaction description (only in full history)
+          example: "CHECK 1234"
+
+    PaymentHistoryResponse:
+      type: object
+      required:
+        - unit
+        - payments
+      properties:
+        unit:
+          type: string
+        year:
+          type: integer
+          nullable: true
+          description: Year filter if applied
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          example: "bad_request"
+        message:
+          type: string
+          example: "Invalid unit number"
