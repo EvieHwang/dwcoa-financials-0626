@@ -103,6 +103,21 @@ MIGRATIONS: list[tuple[int, str]] = [
         CREATE INDEX IF NOT EXISTS idx_budgets_year ON budgets(year);
         """,
     ),
+    (
+        2,
+        # budget_locks: the legacy app's in-year safeguard against accidental
+        # budget edits. This feature lands the table and carries lock state over;
+        # enforcement (rejecting edits to a locked year) is restored in Budgets.
+        # The legacy `locked_by` column is intentionally dropped — there are no
+        # per-user identities in this app.
+        """
+        CREATE TABLE IF NOT EXISTS budget_locks (
+            year INTEGER PRIMARY KEY,
+            locked INTEGER NOT NULL DEFAULT 0,
+            locked_at TEXT
+        );
+        """,
+    ),
 ]
 
 

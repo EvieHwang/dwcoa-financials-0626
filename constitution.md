@@ -68,7 +68,14 @@ a decision, not made silently.
 
 ## Testing
 Framework: pytest (backend) + Vitest (frontend)
-Run: `cd backend && .venv/bin/pytest` and `cd frontend && pnpm test`
+Run: `cd backend && for d in ../features/*/tests/backend; do .venv/bin/pytest "$d" || exit 1; done` and `cd frontend && pnpm test`
+
+Each feature ships its own `tests/backend/` with its own `conftest.py`, and the
+test files import shared data/helpers with a bare `from conftest import ...`.
+Two same-named `conftest` modules cannot coexist in one Python process, so the
+backend suites are run one feature directory per pytest process (the loop above),
+not as a single `pytest` invocation over a combined `testpaths`. The loop scales
+automatically as features are added.
 
 ## Out of scope
 See `declaration.md` § Out of scope for the canonical list. In brief, this codebase does **not**: use AI/LLM categorization; support per-user or per-unit logins; integrate with banks (data enters only via manual CSV upload); collect online payments; send email/notifications; integrate with accounting software or implement double-entry/general-ledger accounting; support multiple associations/tenants; or provide multi-year trend analytics beyond per-year budget-vs-actual and dues carryover.

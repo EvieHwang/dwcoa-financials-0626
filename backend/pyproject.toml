@@ -24,6 +24,14 @@ build-backend = "setuptools.build_meta"
 include = ["app*"]
 
 [tool.pytest.ini_options]
-# The Foundation test suite lives with the feature artifacts, not next to the
-# code. Point pytest at it so `cd backend && .venv/bin/pytest` runs the suite.
-testpaths = ["../features/foundation-001/tests/backend"]
+# Feature test suites live with the feature artifacts, not next to the code.
+# Each feature dir has its own conftest.py and its test files do a bare
+# `from conftest import ...`; two same-named `conftest` modules cannot coexist
+# in one Python process. So the canonical backend command runs one feature dir
+# per pytest process (see constitution.md § Testing) — a bare `pytest` over the
+# combined testpaths below WILL collide and is not the blessed invocation. The
+# list documents the full cumulative suite; pass an explicit dir to run one.
+testpaths = [
+    "../features/foundation-001/tests/backend",
+    "../features/legacy-migration-002/tests/backend",
+]
