@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up flyctl
-        uses: superfly/fly-actions/setup@master
+        uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy image to Fly
         run: flyctl deploy --remote-only
