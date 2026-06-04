@@ -44,3 +44,6 @@ xcuserdata/
 # Logs / temp
 *.log
 *.tmp
+
+# TypeScript build info
+*.tsbuildinfo

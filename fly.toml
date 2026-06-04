@@ -1,0 +1,36 @@
+# Fly.io config — single always-on app serving the FastAPI backend, which in
+# turn serves the built React frontend as static assets.
+app = "dwcoa-financials"
+primary_region = "sea"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # SQLite lives on the mounted volume; overridable per E4.
+  DATABASE_PATH = "/data/dwcoa.db"
+  STATIC_DIR = "/app/static"
+
+# Persistent volume for the SQLite database.
+[[mounts]]
+  source = "dwcoa_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # Live readiness check against the gated health endpoint.
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
