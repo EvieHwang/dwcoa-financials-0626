@@ -34,10 +34,11 @@ Web — responsive single-page app for desktop and mobile browsers, served from 
 - **Dashboard & reporting UI** — React dashboard (balances, summaries, charts), print-clean layout, and PDF/CSV export.
 
 ## Roadmap (revisable)
-1. **Foundation** — app skeleton, shared-password auth, schema + seed, legacy DB import, fly.io deploy. Touches: Auth & session, Persistence & deploy substrate, API layer.
-2. **Ingestion** — full-history CSV upload with dedup, account mapping, transaction table + CSV export. Touches: Transaction ingestion & store, API layer, Dashboard & reporting UI.
-3. **Rules categorization** — rules engine, review queue, auto-suggest-rule-on-fix, rules editor. Touches: Categorization engine, Transaction ingestion & store, API layer, Dashboard & reporting UI.
-4. **Budgets** — per-year/category amounts, timing patterns, copy-year, YTD proration. Touches: Budget, dues & units model, API layer, Dashboard & reporting UI.
-5. **Dashboard & reporting** — balances, income/expense summaries with remaining, charts, transfers excluded, print-clean layout + PDF. Touches: Dashboard & reporting UI, Budget, dues & units model, API layer.
-6. **Dues by unit** — expected vs. paid, unit-centric outstanding balances. Touches: Budget, dues & units model, API layer, Dashboard & reporting UI.
-7. **My Account** — per-unit statement, carryover, payment guidance, past-dues. Touches: Budget, dues & units model, Dashboard & reporting UI, API layer.
+1. **Foundation** — app skeleton, shared-password auth, full schema + reference seed, fly.io deploy. Touches: Auth & session, Persistence & deploy substrate, API layer, Dashboard & reporting UI (shell).
+2. **Legacy data migration** — one-time importer mapping the old production SQLite DB (legacy SQLite-in-S3) into the new schema; actual S3 pull/import runs from a local session with AWS access. Touches: Persistence & deploy substrate, Transaction ingestion & store, Budget, dues & units model.
+3. **Ingestion** — full-history CSV upload with dedup, account mapping, transaction table + CSV export. Touches: Transaction ingestion & store, API layer, Dashboard & reporting UI.
+4. **Rules categorization** — rules engine, review queue, auto-suggest-rule-on-fix, rules editor. Touches: Categorization engine, Transaction ingestion & store, API layer, Dashboard & reporting UI.
+5. **Budgets** — per-year/category amounts, timing patterns, copy-year, YTD proration. Touches: Budget, dues & units model, API layer, Dashboard & reporting UI.
+6. **Dashboard & reporting** — balances, income/expense summaries with remaining, charts, transfers excluded, print-clean layout + PDF. Touches: Dashboard & reporting UI, Budget, dues & units model, API layer.
+7. **Dues by unit** — expected vs. paid, unit-centric outstanding balances. Touches: Budget, dues & units model, API layer, Dashboard & reporting UI.
+8. **My Account** — per-unit statement, carryover, payment guidance, past-dues. Touches: Budget, dues & units model, Dashboard & reporting UI, API layer.

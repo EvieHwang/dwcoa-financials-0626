@@ -67,8 +67,8 @@ a decision, not made silently.
 [Add further app-specific gates below as they are established.]
 
 ## Testing
-Framework: [populated by /spec on first use]
-Run: `[command — populated by /spec on first use]`
+Framework: pytest (backend) + Vitest (frontend)
+Run: `cd backend && .venv/bin/pytest` and `cd frontend && pnpm test`
 
 ## Out of scope
 See `declaration.md` § Out of scope for the canonical list. In brief, this codebase does **not**: use AI/LLM categorization; support per-user or per-unit logins; integrate with banks (data enters only via manual CSV upload); collect online payments; send email/notifications; integrate with accounting software or implement double-entry/general-ledger accounting; support multiple associations/tenants; or provide multi-year trend analytics beyond per-year budget-vs-actual and dues carryover.
