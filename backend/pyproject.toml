@@ -1,0 +1,29 @@
+[project]
+name = "dwcoa-financials"
+version = "0.1.0"
+description = "DWCOA Financials — FastAPI backend (auth, persistence, API, single-app deploy)."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "PyJWT>=2.8",
+    "bcrypt>=4.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+# The Foundation test suite lives with the feature artifacts, not next to the
+# code. Point pytest at it so `cd backend && .venv/bin/pytest` runs the suite.
+testpaths = ["../features/foundation-001/tests/backend"]
