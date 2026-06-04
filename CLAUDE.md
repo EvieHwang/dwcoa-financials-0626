@@ -47,7 +47,7 @@ Two-part repo: a Python/FastAPI backend and a React/Vite frontend. The backend s
 ### Fly.io (single always-on app)
 - App + config: `fly.toml` at repo root; a Dockerfile builds the backend image and bundles the built frontend, which the backend serves as static assets (one deployable, no separate origin / CORS setup).
 - Persistence: SQLite on a mounted Fly volume; periodic backup (e.g. Litestream or scheduled volume snapshot).
-- Region: primary `sea` (Seattle, near the HOA).
+- Region: primary `sjc` (San Jose — nearest available Fly region to the HOA in Seattle; `sea` is not offered to this org).
 - Secrets: set via `fly secrets set` (mirror of the repo's GitHub Actions secrets); the deploy workflow authenticates with `FLY_API_TOKEN`.
 - Deploy via GitHub Actions on push to `main`, on a GitHub-hosted runner: `flyctl deploy --remote-only`. No self-hosted runner needed.
 - A deploy is "successful" only if a post-deploy health check against the live app passes — a zero exit from `flyctl deploy` confirms the release was created, not that the app is reachable. The workflow must curl a health endpoint and fail the job if it doesn't return 2xx within a bounded retry window.
