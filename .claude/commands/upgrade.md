@@ -2,9 +2,19 @@
 description: Upgrade a downstream project's framework-owned files to the latest version from evie-dev-framework. Replaces all skill commands, user-guide.md, features/README.md, and FRAMEWORK_VERSION wholesale; semantically merges CLAUDE.md and constitution.md framework-owned sections behind per-edit in-session approval, preserving project-specific content.
 ---
 
-Upgrade this project's framework files to the latest version from `EvieHwang/evie-dev-framework`.
+Upgrade this project's framework files to the latest version from the canonical framework repo.
 
-All framework files are fetched using `curl` via the Bash tool against raw GitHub URLs (`https://raw.githubusercontent.com/EvieHwang/evie-dev-framework/main/<path>`). Do not use `mcp__github__get_file_contents` for the framework repo (MCP is scoped to the current project only) and do not use WebFetch (blocked by sandbox network policy).
+## Source of truth
+
+The framework source repo is declared once here and used for **every** fetch below — never inline another repo slug:
+
+```
+SOURCE_REPO = EvieHwang/evie-dev-framework
+```
+
+`evie-dev-framework` is the authoritative, actively-developed framework repo. The non-suffixed `evie-dev-framework` is an older snapshot — do not fetch from it. If this constant ever needs to change, change it here only; the single declaration is what keeps the canonical-vs-snapshot split from drifting across the seven fetches below.
+
+All framework files are fetched using `curl` via the Bash tool against raw GitHub URLs (`https://raw.githubusercontent.com/<SOURCE_REPO>/main/<path>`, i.e. `https://raw.githubusercontent.com/EvieHwang/evie-dev-framework/main/<path>`). Do not use `mcp__github__get_file_contents` for the framework repo (MCP is scoped to the current project only) and do not use WebFetch (blocked by sandbox network policy).
 
 ## Pre-flight checks
 
@@ -68,9 +78,9 @@ There are two classes of edit. Build the full list of proposed edits across both
 For each section below, take the text from the section heading up to the next `##` heading and compare framework vs. local:
 
 **CLAUDE.md:** `## Repo map`, `## Development environment`, `## Secrets`
-**constitution.md:** `## Standards`
+**constitution.md:** `## Standards`, `## Spec-authoring lessons`
 
-If a section is byte-identical, skip it. If it differs, produce a **semantic merge**, not a blind overwrite: adopt the framework's new structure, wording, and any new directives, while **preserving any project-specific lines the local copy added** to that section (e.g. repo-specific entries under Repo map, project-added standards). When in doubt about whether a local line is a project addition or stale framework text, keep it and call it out in the approval prompt so the user decides.
+If a section is byte-identical, skip it. **If a section is absent locally** — one the framework has newly introduced (e.g. `## Spec-authoring lessons`) — propose adding the framework version verbatim at the position it occupies in the framework file, as its own approval-gated edit. If it differs, produce a **semantic merge**, not a blind overwrite: adopt the framework's new structure, wording, and any new directives, while **preserving any project-specific lines the local copy added** to that section (e.g. repo-specific entries under Repo map, project-added standards, accumulated spec-authoring lessons). When in doubt about whether a local line is a project addition or stale framework text, keep it and call it out in the approval prompt so the user decides.
 
 ### Class 2 — stale-section deletions
 

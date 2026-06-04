@@ -28,10 +28,29 @@ The one place the framework still inserts itself into execution is the **adversa
 ## Core documents
 
 - **`declaration.md`** — the project's statement of intent: what it is, why, for whom, what it explicitly doesn't do, plus **Shape** (3–7 named components/seams) and **Roadmap** (3–7 anticipated features in rough order). Shape and Roadmap are revisable as the project learns.
-- **`constitution.md`** — the project's accumulated judgment: standards registry, architectural principles, patterns in use, quality gates, testing framework, decision log, acknowledged risks.
+- **`constitution.md`** — the project's accumulated judgment: standards registry, architectural principles, patterns in use, spec-authoring lessons (mistakes prior builds taught, fed back by `/retro` and read by `/spec`), quality gates, testing (one block per runner — polyglot repos have several), decision log, acknowledged risks.
 - **`CLAUDE.md`** — the app's operational map: repo layout, run/test/deploy context, and user-global identity coordinates.
 
 The model reads these before acting; you don't have to remind it to.
+
+---
+
+## Which command edits which files
+
+A command writing outside its lane is how top-level intent gets corrupted, so the ownership is explicit:
+
+| Command | Writes / edits |
+|---|---|
+| `/setup` | `README.md`, `CLAUDE.md` (project sections), `declaration.md` |
+| `/declaration` | `declaration.md` |
+| `/feature` | `features/[name]/declaration.md` |
+| `/spec` | `features/[name]/spec.md` + `tests/`; **appends** to `constitution.md` (`## Acknowledged risks`, `## Testing` on first use); may update `declaration.md`'s Roadmap when the build order shifts — but says so |
+| `/build` | feature source code, `features/[name]/build-deviations.md`; corrects tests only per its contract |
+| `/retro` | `features/[name]/retro.md`; **proposes** (never auto-applies) edits to `constitution.md` / `CLAUDE.md` / skills, including `## Spec-authoring lessons` entries |
+| `/patch` | scoped code + tests for the one change |
+| `/upgrade` | framework-owned files wholesale; merges `CLAUDE.md` / `constitution.md` framework sections behind per-edit approval |
+
+The rule behind the table: top-level `declaration.md` is rewritten only by `/setup` and `/declaration` (with `/spec` allowed to adjust the Roadmap, explicitly). `constitution.md` grows by append during `/spec` (risks, testing) and `/retro` (spec-authoring lessons); its principle/pattern/standard sections change deliberately — via a `/retro` proposal or `/upgrade` — not as a side effect of a feature build.
 
 ---
 
@@ -68,8 +87,8 @@ Reach for `/feature` only when a feature's scope is genuinely fuzzy and you want
 
 1. **Declaration** — the feature's intent, from the prior conversation (or from a `/feature` run if you did one).
 2. **Spec** — `spec.md`: behavioral requirements *and* the design that satisfies them, written together in one pass. Constraints are behavioral, not implementation prescriptions.
-3. **Tests** — an executable suite in `tests/` that is the acceptance bar. A weak test is worse than no test, so the suite is the real deliverable, not a sketch.
-4. **Adversarial gate** — a fresh sub-agent in clean context whose only job is to attack the spec and tests. Independence is the point: a review folded into the authoring pass inherits that pass's blind spots.
+3. **Tests** — an executable suite in `tests/` that is the acceptance bar. A weak test is worse than no test, so the suite is the real deliverable, not a sketch — but a *premature* test that pins implementation detail just to be writable is the opposite failure, and `/spec` guards against both. Each test is tagged `@frozen` (a real contract `/build` must satisfy as written) or `@scaffolding` (an interface named provisionally that `/build` may refine as long as the behavior holds). Polyglot repos with more than one runner (e.g. pytest + Vitest) are wired once in `constitution.md`'s `## Testing` so feature tests are executable without per-feature path hacks.
+4. **Adversarial gate** — a fresh sub-agent in clean context whose only job is to attack the spec and tests. Independence is the point: a review folded into the authoring pass inherits that pass's blind spots. When you choose to *fix* a HIGH/MEDIUM security finding, a second cheap clean-context pass re-checks just that fix diff, so the fix isn't trusted solely because the same author wrote it.
 
 This is a single gate, not a loop — no requirements↔architecture round-trips, no stability markers, no convergence counters. `/spec` stops only for decisions you must make: the gate's findings (you choose to fix, acknowledge, or proceed for each), scope drift, tension with the declaration, or a risk that needs your explicit acknowledgment. Acknowledged risks are recorded in `constitution.md`. When the gate is resolved, `/spec` commits and opens a handoff PR against `main`.
 
@@ -81,10 +100,10 @@ This is a single gate, not a loop — no requirements↔architecture round-trips
 /build   feature-name: [name]
 ```
 
-`/build` assumes the spec and tests are final and merged. It plans the work, decomposes it (parallel subagents / Dynamic Workflows where the work warrants it), and implements against the tests, iterating until the full suite passes. Then it opens a PR.
+`/build` assumes the spec and tests are final and merged. It plans the work, decomposes it (parallel subagents / Dynamic Workflows where the work warrants it), and implements against the tests, iterating until every runner's suite passes — in a polyglot repo the bar is all runners green, not just one. Then it opens a PR.
 
 During build:
-- **Tests are the source of truth.** A failing test means the implementation is wrong — unless the test itself is genuinely in error, in which case the correction is logged in `build-deviations.md`.
+- **Tests are the source of truth.** A failing test means the implementation is wrong — unless the test itself is genuinely in error, in which case the correction is logged in `build-deviations.md`. `@frozen` tests are satisfied as written; `@scaffolding` tests give `/build` latitude to refine the named interface surface as long as the asserted behavior still holds (also logged).
 - **Requirements are immutable.** If a requirement looks actually wrong, `/build` stops and kicks back to `/spec` rather than editing the spec — requirements get revised against a fresh adversarial gate, not patched mid-build.
 - **Design is a recommendation.** When reality contradicts the design, `/build` satisfies the behavioral requirement a different way and logs the deviation in `build-deviations.md`.
 
@@ -94,7 +113,7 @@ During build:
 /retro   feature-name: [name]
 ```
 
-Optional but recommended. A coached conversation producing `retro.md` — what went well, what didn't (with build deviations as evidence), whether the adversarial gate earned its keep, and concrete proposed changes to `constitution.md`, `CLAUDE.md`, and skill prompts. Template-level lessons are marked separately so they lift directly into a framework-update PR.
+Optional but recommended. A coached conversation producing `retro.md` — what went well, what didn't (with build deviations as evidence), whether the adversarial gate earned its keep, and concrete proposed changes to `constitution.md`, `CLAUDE.md`, and skill prompts. This is also where the **feedback loop closes**: `/retro` mines `build-deviations.md` for recurring spec-authoring mistakes and proposes entries for `constitution.md`'s `## Spec-authoring lessons`, which the next `/spec` reads — so the same authoring mistakes don't recur silently across features. Template-level lessons are marked separately so they lift directly into a framework-update PR.
 
 ---
 
@@ -102,7 +121,7 @@ Optional but recommended. A coached conversation producing `retro.md` — what w
 
 After cloning the template:
 
-1. `/setup` — coached fill of `CLAUDE.md` (name, description, run/test/deps, deployment target) and a README stub, then `/declaration` as its second phase. Both happen in one session.
+1. `/setup` — coached fill of `CLAUDE.md` (name, description, run/test/deps, deployment target) and a README stub, then `/declaration` as its second phase. Both happen in one session. The low-stakes operational fields default to *expert mode* — `/setup` proposes a full draft and asks for diffs rather than walking one question per turn — while the genuine forks (Shape, Roadmap) still go one at a time. In the cloud sandbox `/setup` ends by pushing and opening a setup PR; merge it before the first `/feature`, which (like every later session) starts fresh from `main`.
 2. Edit `constitution.md`'s app-specific sections as the project develops; the template ships with universal defaults already filled in (prune anything that doesn't apply).
 3. Pick an approach for your first piece of work.
 
