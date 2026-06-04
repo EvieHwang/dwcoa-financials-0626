@@ -77,6 +77,26 @@ backend suites are run one feature directory per pytest process (the loop above)
 not as a single `pytest` invocation over a combined `testpaths`. The loop scales
 automatically as features are added.
 
+### Feature-test wiring (project-level convention)
+Feature tests live with their feature artifacts, not next to the code, under
+`features/<feature>/tests/{backend,frontend}/`. Each runner discovers them via a
+**per-feature registration that the feature's `/build` adds when that feature is
+built** — never the `/spec` PR. (The spec PR only deposits the test files; this
+is why spec PRs stay green — a feature's still-failing pre-build tests are not yet
+on any runner's path. A given feature's tests join the suite only once its build
+lands, in roadmap order.)
+- **pytest:** append `"../features/<feature>/tests/backend"` to
+  `backend/pyproject.toml` → `[tool.pytest.ini_options].testpaths`. Keep
+  test-module basenames unique across features (pytest's default import mode
+  collides on duplicate basenames). Each backend test dir resolves the repo root
+  from its own location (`Path(__file__).resolve().parents[4]`) and puts
+  `backend/` on `sys.path` — never an absolute sandbox path.
+- **Vitest:** extend `frontend/vite.config.ts` → `test.include` to cover
+  `../features/<feature>/tests/frontend/**`. Frontend tests import the app via the
+  `@/` alias and pull `react`/`react-dom`/`@testing-library/*`/`vitest` through the
+  external-dep aliases already configured in `vite.config.ts` (the test files live
+  outside the `frontend/` package, so Node can't walk up to its `node_modules`).
+
 ## Out of scope
 See `declaration.md` § Out of scope for the canonical list. In brief, this codebase does **not**: use AI/LLM categorization; support per-user or per-unit logins; integrate with banks (data enters only via manual CSV upload); collect online payments; send email/notifications; integrate with accounting software or implement double-entry/general-ledger accounting; support multiple associations/tenants; or provide multi-year trend analytics beyond per-year budget-vs-actual and dues carryover.
 
@@ -91,6 +111,7 @@ See `declaration.md` § Out of scope for the canonical list. In brief, this code
 | 2026-06-03 | Full-history CSV upload with server-side dedup | Real-world treasurer workflow; idempotent re-uploads are safer than incremental append |
 | 2026-06-03 | Keep two shared passwords (admin / view-only), hardened server-side | Trust-based 9-unit HOA; per-user accounts are unjustified overhead, but verification moves server-side to close OWASP gaps |
 | 2026-06-03 | Migrate the live production DB (not fresh seed) | Existing budgets, past-dues, rules, and transactions must carry over; actual S3 pull runs from a local session with AWS access |
+| 2026-06-04 | Cut transaction CSV export from the Ingestion slice (deviation from the "all data exportable as CSV" portability principle) | Owner has never used it and the data is now far richer; portability is met instead by the copyable SQLite file + documented schema. May return with the reporting slice if a real need emerges. Dropping it also removes the CSV-formula-injection-on-export surface. |
 
 ## Acknowledged risks
 *Cross-feature accumulation surface. Each adversarial-gate finding the owner marks `acknowledged` gets one row here so the project never silently forgets that it knowingly took on risk. Severity is the unmitigated severity — an acknowledged HIGH stays HIGH. Populated by `/spec` when a finding is acknowledged.*
