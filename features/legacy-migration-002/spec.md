@@ -96,6 +96,15 @@ can rehearse the cutover without risk.
   target from the source.
 - **Acceptance:** a missing or unreadable source aborts with a clear error and
   produces no partial target.
+- **Acceptance:** the importer validates the source's shape (expected tables and
+  columns present) before loading; a source whose schema does not match the
+  expected legacy shape — e.g. a `categories` table missing the `timing` column —
+  aborts with a clear error and produces no target. It never silently skips a
+  column or table. (This guards against trusting the stale vendored
+  `reference/.../schema.sql` over the empirically-verified live schema.)
+- **Acceptance:** any failure during the build (a constraint violation while
+  loading, a schema mismatch) leaves no readable partial target — the importer
+  removes the partial file it created. The migration is all-or-nothing.
 
 ### R8 — The new schema gains a `budget_locks` table via migration
 - A new versioned migration (after foundation's version 1) creates
@@ -169,11 +178,14 @@ because the call shape *is* the contract):
   binary-float artifacts cannot shift the result, rounding half away from zero.
   **These functions are the highest-value test surface (R1, R2).**
 - `build_target(source_path: str, target_path: str, force: bool = False) -> None`
-  — (a) creates the target with the new schema by running the foundation
-  migrations, (b) does **not** seed, and (c) reads each source table and writes
-  the transformed rows into the target preserving primary keys, inside a single
-  transaction so a failure leaves no partial target. Raises on a missing source
-  or an occupied target without `force` (R7).
+  — (a) validates the source exists and matches the expected legacy shape
+  (failing loudly otherwise), (b) creates the target with the new schema by
+  running the foundation migrations, (c) does **not** seed, and (d) reads each
+  source table and writes the transformed rows into the target preserving
+  primary keys, inside a single transaction. On any failure — missing/unreadable
+  source, unexpected source schema, an occupied target without `force`, or a
+  constraint violation mid-load — it raises and removes any partial target it
+  created, so a failed run never leaves a readable partial DB (R7).
 - A `__main__` CLI: `python -m app.legacy_import --source <legacy.db>
   --target <out.db> [--force]`, wrapping `build_target` with the clobber
   guard (R7).
@@ -229,7 +241,10 @@ counts, per-year transaction counts, locked years `2025`/`2026`).
 ### Test fixtures
 Because the real `dwcoa.db` contains private financial data and is never
 committed, the suite builds a **synthetic legacy-schema fixture DB** in a temp
-dir, populated with rows that exercise the edge cases: credit-only and
+dir. **The fixture mirrors an empirical dump of the live production DB, not the
+vendored `reference/.../schema.sql`, which is stale** — production has `timing`
+columns on `categories` and `budgets` that the vendored schema never adds. The
+fixture is populated with rows that exercise the edge cases: credit-only and
 debit-only transactions across multiple years, a negative balance, a `NULL`
 `budgets.timing`, the real ownership fractions, the real past-due values
 (including the unit-302 correction), multi-year budgets, locked and unlocked
@@ -251,6 +266,8 @@ importer runs against this fixture; assertions check the output DB.
 | R5 lock rows carried, `locked_by` dropped | `test_import.py::test_budget_locks_migrated` |
 | R6 no views / no deprecated column in output | `test_import.py::test_legacy_artifacts_dropped` |
 | R7 clobber guard + force + missing source | `test_import.py::test_refuses_existing_target`, `test_force_rebuilds`, `test_missing_source_aborts` |
+| R7 atomic build (no partial target on mid-load failure) | `test_import.py::test_partial_write_leaves_no_target` |
+| R7 unexpected source schema fails loudly, no target | `test_import.py::test_unexpected_source_schema_aborts` |
 | R8 budget_locks migration idempotent | `test_budget_locks_migration.py` |
 | R9 seed no-op on populated DB; full on empty | `test_seed_gating.py::test_seed_noop_when_populated`, `::test_seed_complete_when_empty` |
 | R10 seed names/types match production | `test_seed_gating.py::test_seed_canonical_names_and_types` |
@@ -259,4 +276,30 @@ importer runs against this fixture; assertions check the output DB.
 ---
 
 ## Adversarial gate
-[populated after the clean-context gate runs]
+
+**Mode:** independent clean-context sub-agent (general-purpose), run once against
+the drafted spec and tests. Four findings returned; all dispositioned **fixed**.
+No risks acknowledged (the `Acknowledged risks` table in constitution.md is
+unchanged for this feature).
+
+- **F1 (HIGH, integrity) — `timing` columns claimed not to exist in the legacy
+  schema; fixture called fictional.** *Disposition: fixed (premise rejected on
+  evidence, hardening adopted).* The gate reasoned from the vendored
+  `reference/.../schema.sql`/`database.py`, which are **stale** — an empirical
+  dump of the live production `dwcoa.db` shows `timing` does exist on
+  `categories` and `budgets`, so the fixture is correct. Adopted the hardening
+  anyway: the importer now validates the source schema up front and aborts
+  loudly on mismatch (R7), the fixture's authority is documented in
+  `conftest.py` and the Test-fixtures note, a regression test
+  (`test_unexpected_source_schema_aborts`) pins the fail-loud behavior, and a
+  caveat about the stale precedent repo was added to CLAUDE.md.
+- **F2 (MEDIUM, coverage) — per-year budget-total test computed expected via the
+  same recipe as the importer.** *Disposition: fixed.* The assertion now uses
+  hardcoded literals (`2024 → 1650000`, `2025 → 1712600`), independent of any
+  conversion recipe.
+- **F3 (LOW, coverage) — `categories >= 22` too loose to catch a dropped
+  category.** *Disposition: fixed.* Tightened to `== 27` (the production set).
+- **F4 (LOW, coverage) — no test that a mid-write failure leaves no partial
+  target.** *Disposition: fixed.* Added `test_partial_write_leaves_no_target`
+  (a source row that violates the new schema's bound) and specified atomic
+  all-or-nothing build in R7/D1.

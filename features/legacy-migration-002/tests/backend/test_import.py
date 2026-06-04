@@ -4,6 +4,7 @@ Expected cent values are computed here independently (via Decimal) rather than
 through the importer's own converter, so the importer is checked against a
 parallel implementation, not against itself.
 """
+import sqlite3
 from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
@@ -97,10 +98,10 @@ def test_counts_and_year_aggregates_match(imported_db):
     finally:
         con.close()
 
-    expected = {}
-    for _id, year, _cat, amount, _timing in LEGACY_BUDGETS:
-        expected[year] = expected.get(year, 0) + cents(amount)
-    assert out_budget_totals == expected
+    # Hardcoded literals, independent of any conversion recipe, so this catches a
+    # rounding-policy disagreement and not merely a dropped/mis-mapped row.
+    # 2024: 12000.00 + 4500.00 = $16,500.00; 2025: 12500.00 + 4600.00 + 26.00 = $17,126.00.
+    assert out_budget_totals == {2024: 1650000, 2025: 1712600}
 
 
 # --- R1 applied across real rows --------------------------------------------
@@ -235,3 +236,40 @@ def test_missing_source_aborts(tmp_path):
     with pytest.raises(Exception):
         build_target(str(tmp_path / "does-not-exist.db"), str(out))
     assert not out.exists()  # no partial target
+
+
+def test_partial_write_leaves_no_target(legacy_db, tmp_path):
+    """A failure mid-load must leave no readable partial target (atomicity)."""
+    from app.legacy_import import build_target
+
+    # Corrupt the source so a row violates the new schema's bound mid-load:
+    # ownership 2.0 -> 2000 per-mille, which fails units' CHECK (pct <= 1000).
+    con = sqlite3.connect(str(legacy_db))
+    con.execute("UPDATE units SET ownership_pct = 2.0 WHERE number = '101'")
+    con.commit()
+    con.close()
+
+    out = tmp_path / "out.db"
+    with pytest.raises(Exception):
+        build_target(str(legacy_db), str(out))
+    assert not out.exists()
+
+
+def test_unexpected_source_schema_aborts(tmp_path):
+    """A source missing an expected column (here: categories.timing) must fail
+    loudly and produce no target — never silently skip data. Guards against
+    trusting the stale reference/schema.sql over the verified live schema."""
+    from app.legacy_import import build_target
+
+    src = tmp_path / "bad.db"
+    con = sqlite3.connect(str(src))
+    con.executescript(
+        "CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT, type TEXT);"
+    )
+    con.commit()
+    con.close()
+
+    out = tmp_path / "out.db"
+    with pytest.raises(Exception):
+        build_target(str(src), str(out))
+    assert not out.exists()

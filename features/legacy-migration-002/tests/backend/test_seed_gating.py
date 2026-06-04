@@ -37,7 +37,9 @@ def test_seed_complete_when_empty(tmp_path):
     try:
         assert con.execute("SELECT COUNT(*) FROM units").fetchone()[0] == 9
         assert con.execute("SELECT COUNT(*) FROM accounts").fetchone()[0] == 3
-        assert con.execute("SELECT COUNT(*) FROM categories").fetchone()[0] >= 22
+        # Exactly the production category set: 22 original (two renamed in place)
+        # + 5 treasurer-added = 27. A loose bound would miss a dropped category.
+        assert con.execute("SELECT COUNT(*) FROM categories").fetchone()[0] == 27
         assert con.execute("SELECT COUNT(*) FROM categorize_rules").fetchone()[0] > 0
     finally:
         con.close()

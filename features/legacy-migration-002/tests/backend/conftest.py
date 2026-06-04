@@ -24,6 +24,11 @@ if str(BACKEND) not in sys.path:
 
 
 # --- Legacy schema (mirrors the live production dwcoa.db) -------------------
+# AUTHORITY: this mirrors an empirical dump of the *live* production dwcoa.db,
+# NOT reference/dwcoa-financials/backend/sql/schema.sql, which is stale — the
+# production DB was migrated past it and DOES have `timing` columns on both
+# `categories` and `budgets` (the vendored schema/runtime-migrations never add
+# them). When the vendored schema and the live dump disagree, the live dump wins.
 # REAL money, ownership as a fraction, the deprecated units.past_due_balance
 # column, budget_locks WITH locked_by, and a legacy reporting view.
 LEGACY_SCHEMA = """

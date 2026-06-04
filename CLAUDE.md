@@ -10,7 +10,7 @@
 ## Precedent repos to consult before building
 *Other repos that encode patterns this project inherits or replaces. List them here so a fresh build agent knows what to read for ground truth before assuming a precedent.*
 
-- `<owner>/<repo>` — what pattern it provides and how this project relates. [Replace or delete per project. Delete the section entirely if there are no precedent repos.]
+- `EvieHwang/dwcoa-financials` (also vendored at `reference/dwcoa-financials/`) — the legacy AWS-serverless app this project rebuilds; source of the data model, categorize rules, and the legacy SQLite schema. **Caveat: the vendored snapshot is stale relative to live production.** The production `dwcoa.db` (in S3) has been migrated past it — e.g. it has `timing` columns on `categories` and `budgets` that `reference/.../sql/schema.sql` and `services/database.py` never add. Trust an empirical dump of the live DB over the vendored schema when they disagree.
 
 If access to a listed repo is scoped out of the current session, ask the user before guessing — earlier specs from precedent repos are not always current and may have been superseded.
 
