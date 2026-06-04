@@ -14,7 +14,7 @@ Present the plan. Include: what's changing, why, and what the change could break
 Implement only the minimal change. Do not refactor adjacent code, rename, or expand scope — even if you see opportunities.
 
 After implementing:
-- Run existing tests.
+- Run existing tests — every runner in constitution.md's `## Testing` whose code this change touched (a polyglot repo has more than one).
 - If a test fails: attempt one remediation. If it still fails, stop and report rather than proceeding.
 
 Commit using conventional commit format (one commit per logical unit).

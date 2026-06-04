@@ -2,7 +2,7 @@
 description: Produces a feature's spec and its executable test suite in one pass, then runs an independent adversarial gate in clean context. Stops only for findings and product-judgment decisions the owner must make; finalizes, commits, and opens a handoff PR for /build. Replaces the old requirements → architecture → adversarial → tests → DAG pipeline.
 ---
 
-Read constitution.md and declaration.md.
+Read constitution.md and declaration.md. Apply constitution.md's `## Spec-authoring lessons` as you go — those are concrete mistakes prior builds revealed about writing specs and tests here; don't repeat them.
 
 `/spec` produces two things for a feature:
 - **`spec.md`** — the behavioral spec: what to build, the seams it touches, and the constraints it must hold. This is the contract.
@@ -46,7 +46,7 @@ Write `features/[feature-name]-[number]/spec.md`. It folds what were once separa
 - **Pattern reuse.** If a component or attack surface reuses a pattern already in constitution.md's registry (existing auth module, Eviebot launchd template, an established DB access layer), say so explicitly. Only mark genuine, complete reuse — partial reuse is not reuse.
 - When a deploy step mutates an asynchronously-updating cloud resource (Lambda, CloudFront, RDS), sequence the wait/poll between dependent mutations and name any value shared between bootstrap and deploy scripts (e.g. the handler path) as an explicit contract.
 
-**Ground-truth check before drafting the design.** Identify the CLAUDE.md sections you intend to lean on — precedent repos, deployment shape, gateway/auth patterns, the User globals block — list them back to the user, and ask whether each is current. If CLAUDE.md names a precedent repo, attempt to read it; if access is scoped out, ask the user to confirm the precedent before assuming it. A wasted design built on a stale section costs more than one short exchange.
+**Ground-truth check before drafting the design.** Identify the CLAUDE.md sections you intend to lean on — precedent repos, deployment shape, gateway/auth patterns, the User globals block — list them back to the user, and ask whether each is current. If CLAUDE.md names a precedent repo, attempt to read it; if access is scoped out, ask the user to confirm the precedent before assuming it. If the precedent is **in-repo reference material** (e.g. a `reference/` folder of prior artifacts to rebuild from, listed under CLAUDE.md's precedent section), read it directly — it is the same kind of ground truth, just local. A wasted design built on a stale section costs more than one short exchange.
 
 **Standards-creep check.** Standards in constitution.md apply by default, but when a thin feature would absorb a heavy cross-cutting set (e.g. full WCAG sign-off for a one-page admin tool), surface the tension rather than silently absorbing the cost. The user decides whether to absorb, scope down, or defer.
 
@@ -54,13 +54,23 @@ Write `features/[feature-name]-[number]/spec.md`. It folds what were once separa
 
 ## Stage 3 — Tests
 
-Check constitution.md's `## Testing` section. If it names a framework, use it. If empty, choose the framework that best fits the stack and any existing tests, surface the choice and run command to the user, confirm, then populate `## Testing`. This is a one-time decision per project.
+Check constitution.md's `## Testing` section. If it names a runner, use it. If empty, choose the framework that best fits the stack and any existing tests, surface the choice and run command to the user, confirm, then populate `## Testing`. This is a one-time decision per project.
+
+**Multi-runner repos.** A polyglot repo has more than one test runner (e.g. pytest for a Python API, Vitest for a JS/TS frontend), each with its own root, import resolution, and config. constitution.md's `## Testing` holds one block per runner. On first use, establish — and record there — the **wiring** that makes feature-folder tests executable by each runner: where each runner's feature tests physically live (default: `features/[feature-name]-[number]/tests/<runner>/`, e.g. `.../tests/api/` and `.../tests/web/`) and the config that discovers them (a `testpaths`/rootdir entry, a Vitest `include` glob, an import alias). Decide this once, write it into `## Testing`, and confirm it with the user; do **not** improvise per-feature path hacks and hand them to `/build` — the wiring is a project-level decision every feature and `/build` inherit. Name any cross-runner convention the tests depend on (an import alias like `@/`, a test base-URL the framework needs). With a single runner this collapses to the simple case.
 
 Derive two categories of tests, both from `spec.md`:
 1. **Behavioral tests** — does it do what the requirements specify?
 2. **Seam tests** — do the design's seams hold? Timeouts fire at the right boundaries, errors map to the right taxonomy, interfaces between components behave as designed. Do not assert that a specific constructor was called with specific arguments, that a private attribute holds a specific value, or that an internal call signature matches the design — those test the implementation, not the seam. Rewrite any such candidate to assert the observable behavior instead.
 
 Tests that read a repo-relative file must resolve the path from the test file's own location (`Path(__file__).resolve().parents[N]` or the language equivalent), never an absolute sandbox path.
+
+**Minimum contract surface.** Writing tests before the code exists forces you to name some interface surface (an app factory, a cookie name, an env var, a UI test-id). Name only what a test genuinely needs to observe behavior, and reach for the most stable surface available. Naming an internal detail *only so a test can be written* is the same implementation-locking the gate flags — a **premature** test that over-constrains `/build` is as much a failure as a weak one. A weak test creates false confidence; a premature test forecloses valid implementations. Both are findings, and they pull in opposite directions: the fix for one is not to commit the other.
+
+**Tag each test file's contract strength** with a one-line marker at the top, one of:
+- `@frozen` — a real public contract (an interface this project exposes to callers, or an externally-observable behavior). `/build` must satisfy it as written.
+- `@scaffolding` — an interface named only to make the behavior testable now; `/build` may refine the surface (rename the seam, change the call shape) as long as the *behavior* the test asserts still holds, logging the change in `build-deviations.md`.
+
+Default behavioral assertions to `@frozen`; use `@scaffolding` only for interface details you are naming ahead of the implementation. An untagged test is treated as `@frozen`. The tag tells `/build` how much latitude it has and tells the gate which surfaces to scrutinize for over-constraint.
 
 Tests written before `/build` implements against them are expected to fail (ImportError, skip, or red assertion) until the code exists — that is the point. The contract is that the suite, once green, means the feature is done.
 
@@ -80,7 +90,7 @@ Spawn prompt, in substance:
 >
 > Review through these lenses:
 > - **Scope drift** — what has been added beyond the feature declaration, or beyond the project declaration?
-> - **Integrity** — do the documents contradict each other? Does the design implement the requirements? Do the tests actually verify the requirements, or do they assert implementation shape (constructor calls, private state, exact call signatures) instead of behavior? A test that locks in implementation detail is itself a finding.
+> - **Integrity** — do the documents contradict each other? Does the design implement the requirements? Do the tests actually verify the requirements, or do they assert implementation shape (constructor calls, private state, exact call signatures) instead of behavior? A test that locks in implementation detail is itself a finding. Honor the `@frozen` / `@scaffolding` tags: an `@frozen` test that pins a non-contract internal detail is a finding (it will over-constrain `/build`); a `@scaffolding` test gets latitude on its named surface, but flag any `@scaffolding` tag hiding a real behavioral assertion that should be `@frozen`.
 > - **Coverage** — what behaviors or edge cases are unspecified or untested? Is any requirement covered only by a weak test?
 > - **Security** — what attack surface does the design expose? Name the specific component and the requirement/design section where it lands; drop findings that only restate a pattern without a location. Honor `Reuses pattern:` markers by scoping those surfaces to HIGH severity only.
 > - **Standards compliance** — does the design respect the applicable items in constitution.md's standards registry?
@@ -96,6 +106,8 @@ The gate does not loop. It runs once against the drafted spec and tests and retu
 ## Resolving the gate and finalizing
 
 Present the gate's findings to the user. These are the **only** stops `/spec` makes, alongside the product-judgment stops below. For each finding the user decides: **fix** it (you edit `spec.md` and/or `tests/` directly — you are the author now, not the gate), **acknowledge** the risk, or **proceed**. The author may fix as many findings as the user directs in this single resolution pass; there is no second gate run and no bounce-back loop.
+
+**Re-gate security fixes.** When the user chooses to **fix** a HIGH or MEDIUM *security* finding, that fix is written by the same author who wrote the spec — reintroducing, one level up, the single-author blind spot the gate exists to remove. After applying such a fix, spawn one fresh clean-context sub-agent (Agent tool, `general-purpose`) scoped to **only the fix**: hand it the finding and the diff of what changed in `spec.md`/`tests/`, and ask whether the fix actually closes the named failure mode or merely relocates it. This is cheap and bounded — one finding, one diff, no full re-review — and runs once per fixed HIGH/MEDIUM security finding, never in a loop. Fold its verdict into the `## Adversarial gate` record. LOW findings and non-security fixes do not trigger a re-gate.
 
 Record the outcome in an `## Adversarial gate` section at the bottom of `spec.md`: the mode (clean-context gate), what was found, and the disposition of each finding (fixed / acknowledged / proceeded). For every finding the user **acknowledges**, append one row to constitution.md's `## Acknowledged risks` table: feature name, severity (the *unmitigated* severity — an acknowledged HIGH stays HIGH), one-line risk, one-line rationale, mitigation (or "none"). This is the project's cumulative-risk surface and it must stay honest.
 

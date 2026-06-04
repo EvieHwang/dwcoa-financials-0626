@@ -12,7 +12,9 @@ Verify the working branch matches `claude/<short-task-name>-<suffix>` (the sandb
 
 ## Phase 1 — Operational setup
 
-Ask in this order; one topic per turn, do not batch:
+These four fields are low-stakes and usually pre-decided in planning, so **default to expert mode**: propose a complete draft of all four at once — inferring sensible defaults from the repo contents and the conversation that led here — and ask the user to confirm or hand back diffs. Walk them one-topic-per-turn only if the user is undecided, asks to be coached through it, or the repo gives you nothing to infer from. (Save the slow, one-question-per-turn cadence for the genuine forks: Phase 2's Shape and Roadmap, and the product/scope stops in `/spec`. Cadence should scale with stakes, not be uniform.)
+
+The four fields, in order:
 
 1. **Project name** — short, human-readable. Used to replace `# [Project Name]` in CLAUDE.md and as the `#` heading in the new README.
 2. **One-line description** — what the app is, in a sentence. Becomes the README subtitle and a comment line in CLAUDE.md.
@@ -97,5 +99,6 @@ What / Why / For whom / Out of scope / Shape / Roadmap
 - `README.md` is an app stub (name + one-liner), no template framework text remains.
 - `CLAUDE.md` has the project name, one-liner, an uncommented run/test/deps block, and an uncommented deployment-target block. `## User globals` is preserved untouched.
 - `declaration.md` is populated with all six sections, confirmed by the user.
-- Both commits are on the current branch; nothing has been pushed.
-- Tell the user: "Setup complete. Next step is `/feature` when you're ready to define the first feature. You can also refine `constitution.md`'s app-specific sections (architectural principles, patterns, quality gates, out-of-scope) before starting feature work."
+- Both commits are on the current branch.
+- **Handoff.** In a cloud sandbox each session re-clones from `main`, so setup must reach `main` before feature work can build on it: push the branch (`git push -u origin <current-branch>`) and ensure exactly one setup PR is open against `main` (the harness may have auto-created one on first push — update it rather than opening a second). The owner merges it before the first `/feature`. Working locally instead, you may leave the commits unpushed and continue straight into `/feature` in the same session.
+- Tell the user: "Setup complete. Once this PR is merged, the next step is `/feature` (in a fresh session, from `main`) when you're ready to define the first feature. You can also refine `constitution.md`'s app-specific sections (architectural principles, patterns, quality gates, out-of-scope) before starting feature work."
