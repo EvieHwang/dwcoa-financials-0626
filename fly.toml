@@ -1,7 +1,7 @@
 # Fly.io config — single always-on app serving the FastAPI backend, which in
 # turn serves the built React frontend as static assets.
 app = "dwcoa-financials"
-primary_region = "sea"
+primary_region = "sjc"
 
 [build]
   dockerfile = "Dockerfile"
