@@ -1,8 +1,18 @@
-"""Idempotent reference-data seeding (D3/D4).
+"""Empty-DB reference-data bootstrap (D3).
 
-Runs on every startup. Uses INSERT OR IGNORE keyed on each table's natural
-unique constraint so re-seeding never duplicates rows or overwrites existing
-values. Money is integer cents; ownership is integer per-mille.
+Runs on every startup but is a true no-op once the DB already holds reference
+data: if any categories are present (migrated production data, or a prior seed),
+`seed_reference_data` returns without writing. This is the idempotency mechanism
+— it supersedes the old per-row INSERT OR IGNORE — and it is what keeps a
+deployed *migrated* production DB from being polluted by phantom seed rows whose
+category names differ from production (e.g. seed `Interest income` vs migrated
+`Interest`). See legacy-migration-002 R9.
+
+The seeded category names and types mirror production's canonical reality
+(legacy-migration-002 R10): `Interest` (not `Interest income`), `Reserve Fund`
+(not `Reserve Expenses`), `Reserve Contribution` typed `Expense`, plus the five
+treasurer-added categories. Money is integer cents; ownership is integer
+per-mille.
 """
 from __future__ import annotations
 
@@ -22,8 +32,13 @@ ACCOUNTS: list[tuple[str, str]] = [
     ("****9226", "Reserve Fund"),
 ]
 
-# name, type, default_account, timing
-CATEGORIES: list[tuple[str, str, str, str]] = [
+# name, type, default_account, timing.
+# Names/types mirror production (R10): `Interest` (not `Interest income`),
+# `Reserve Fund` (not `Reserve Expenses`), `Reserve Contribution` typed
+# `Expense`, plus the five treasurer-added categories at the end. Newly added
+# categories with no known account use the schema defaults (default_account
+# NULL, timing 'monthly'), matching how they appear in production.
+CATEGORIES: list[tuple[str, str, str | None, str]] = [
     ("Dues 101", "Income", "Savings", "monthly"),
     ("Dues 102", "Income", "Savings", "monthly"),
     ("Dues 103", "Income", "Savings", "monthly"),
@@ -33,7 +48,7 @@ CATEGORIES: list[tuple[str, str, str, str]] = [
     ("Dues 301", "Income", "Savings", "monthly"),
     ("Dues 302", "Income", "Savings", "monthly"),
     ("Dues 303", "Income", "Savings", "monthly"),
-    ("Interest income", "Income", "Any", "monthly"),
+    ("Interest", "Income", "Any", "monthly"),
     ("Bulger Safe & Lock", "Expense", "Checking", "annual"),
     ("Cintas Fire Protection", "Expense", "Checking", "annual"),
     ("Common Area Cleaning", "Expense", "Checking", "monthly"),
@@ -43,9 +58,15 @@ CATEGORIES: list[tuple[str, str, str, str]] = [
     ("Insurance Premiums", "Expense", "Checking", "monthly"),
     ("Seattle City Light", "Expense", "Checking", "monthly"),
     ("Other", "Expense", "Checking", "annual"),
-    ("Reserve Contribution", "Transfer", "Savings", "monthly"),
-    ("Reserve Expenses", "Expense", "Reserve Fund", "annual"),
+    ("Reserve Contribution", "Expense", "Savings", "monthly"),
+    ("Reserve Fund", "Expense", "Reserve Fund", "annual"),
     ("Transfers", "Internal", "Any", "annual"),
+    # Five treasurer-added categories (production drift past foundation's seed).
+    ("Membership & License", "Expense", None, "monthly"),
+    ("Reserve Income", "Income", None, "monthly"),
+    ("202 & 302 Balcony Repairs", "Expense", None, "monthly"),
+    ("102 & 103 Leak Repairs", "Expense", None, "monthly"),
+    ("PB Replacement", "Expense", None, "monthly"),
 ]
 
 # 2025 annual budget, in integer cents, keyed by category name.
@@ -53,7 +74,7 @@ BUDGET_2025_CENTS: dict[str, int] = {
     "Dues 101": 595475, "Dues 201": 595475, "Dues 301": 595475,
     "Dues 102": 529311, "Dues 202": 529311, "Dues 302": 529311,
     "Dues 103": 570027, "Dues 203": 570027, "Dues 303": 570027,
-    "Interest income": 2600,
+    "Interest": 2600,
     "Reserve Contribution": 1800000,
     "Bulger Safe & Lock": 40000,
     "Cintas Fire Protection": 150000,
@@ -76,7 +97,7 @@ CATEGORIZE_RULES: list[tuple[str, str]] = [
     ("MCCARY", "Grounds/Landscaping"),
     ("NWEDI-291390275", "Insurance Premiums"),
     ("SEATTLEUTILTIES", "Seattle City Light"),
-    ("Dividend/Interest", "Interest income"),
+    ("Dividend/Interest", "Interest"),
     ("BOEING EMPLOYEES CREDIT UNION", "Dues 101"),
     ("Emma Landsman", "Dues 102"),
     ("JARED MOLTON", "Dues 103"),
@@ -94,9 +115,21 @@ APP_CONFIG: list[tuple[str, str]] = [
 
 
 def seed_reference_data(db_path: str) -> None:
-    """Insert reference data when absent. Idempotent (safe on every startup)."""
+    """Bootstrap reference data on an empty DB; a true no-op once populated.
+
+    The single guard is the presence of categories: if any exist (migrated
+    production data or a prior seed), return without writing any table. This
+    keeps a deployed migrated production DB from being polluted by phantom seed
+    rows (R9), and the guard does not depend on per-table seeding order.
+    """
     con = get_connection(db_path)
     try:
+        already_seeded = con.execute(
+            "SELECT 1 FROM categories LIMIT 1"
+        ).fetchone()
+        if already_seeded is not None:
+            return
+
         con.executemany(
             "INSERT OR IGNORE INTO units (number, ownership_pct) VALUES (?, ?)",
             UNITS,

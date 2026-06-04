@@ -8,7 +8,9 @@ EXPECTED_BUDGET_CENTS = {
     "Dues 101": 595475, "Dues 201": 595475, "Dues 301": 595475,
     "Dues 102": 529311, "Dues 202": 529311, "Dues 302": 529311,
     "Dues 103": 570027, "Dues 203": 570027, "Dues 303": 570027,
-    "Interest income": 2600,
+    # Renamed to production's canonical name by legacy-migration-002 R10
+    # (was "Interest income"; production drifted to "Interest").
+    "Interest": 2600,
     "Reserve Contribution": 1800000,
     "Bulger Safe & Lock": 40000,
     "Cintas Fire Protection": 150000,
@@ -44,7 +46,9 @@ def test_reference_data_seeded(client, app_env):
         cats = {r["name"] for r in con.execute("SELECT name FROM categories")}
     finally:
         con.close()
-    assert {"Dues 101", "Interest income", "Grounds/Landscaping",
+    # "Interest" (not "Interest income") per legacy-migration-002 R10, which
+    # corrects the seed to production's canonical category names.
+    assert {"Dues 101", "Interest", "Grounds/Landscaping",
             "Reserve Contribution", "Transfers"} <= cats
 
 
