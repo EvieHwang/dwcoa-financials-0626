@@ -4,9 +4,12 @@
 # --- Stage 1: build the React frontend ---
 FROM node:22-slim AS frontend
 WORKDIR /frontend
-RUN corepack enable
+# Use the pnpm version pinned in package.json's "packageManager" field, not
+# corepack's latest (which enforces a 24h minimum-release-age supply-chain gate
+# that rejects fast-moving transitive deps and breaks reproducible builds).
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 COPY frontend/package.json frontend/pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile || pnpm install
+RUN corepack enable && pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm build
 
