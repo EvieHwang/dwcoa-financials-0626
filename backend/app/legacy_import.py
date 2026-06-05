@@ -21,6 +21,7 @@ from pathlib import Path
 
 from .db import get_connection
 from .migrations import run_migrations
+from .money import dollars_to_cents
 
 # --- Converters (R1 / R2) ---------------------------------------------------
 
@@ -28,13 +29,12 @@ from .migrations import run_migrations
 def to_cents(value: float | None) -> int | None:
     """Map a legacy dollar `REAL` (or None) to exact integer cents (or None).
 
-    Half rounds away from zero. Uses the value's exact decimal string so binary
-    float artifacts (832.06 * 100 == 83205.99999999999) never shift the result.
+    Delegates to the shared exact-cents converter (`app.money.dollars_to_cents`)
+    so there is one rounding implementation across the importer and ingestion.
     """
     if value is None:
         return None
-    cents = (Decimal(str(value)) * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP)
-    return int(cents)
+    return dollars_to_cents(value)
 
 
 def to_permille(value: float) -> int:

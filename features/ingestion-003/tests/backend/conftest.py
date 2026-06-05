@@ -78,16 +78,26 @@ def do_login(client, password):
     return client.post("/api/auth/login", json={"password": password})
 
 
+# admin_client / viewer_client build their *own* TestClient (their own cookie
+# jar) rather than logging in on the shared `client` fixture. Otherwise a test
+# that asks for both `viewer_client` and `client` would receive the same logged-in
+# instance for `client`, making the "anonymous request -> 401" assertion in
+# test_upload_requires_admin unobservable. All three apps point at the same
+# DATABASE_PATH (migrations + seed are idempotent), so DB state is shared.
 @pytest.fixture
-def admin_client(client):
-    assert do_login(client, ADMIN_PW).status_code == 200
-    return client
+def admin_client(make_app):
+    from fastapi.testclient import TestClient
+    with TestClient(make_app(), base_url="https://testserver") as c:
+        assert do_login(c, ADMIN_PW).status_code == 200
+        yield c
 
 
 @pytest.fixture
-def viewer_client(client):
-    assert do_login(client, BOARD_PW).status_code == 200
-    return client
+def viewer_client(make_app):
+    from fastapi.testclient import TestClient
+    with TestClient(make_app(), base_url="https://testserver") as c:
+        assert do_login(c, BOARD_PW).status_code == 200
+        yield c
 
 
 # --- CSV / upload helpers --------------------------------------------------

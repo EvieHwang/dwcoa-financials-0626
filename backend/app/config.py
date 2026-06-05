@@ -30,6 +30,7 @@ class Config:
     static_dir: str
     login_max_attempts: int
     login_window_seconds: int
+    ingest_max_upload_bytes: int
 
 
 def load_config() -> Config:
@@ -51,4 +52,9 @@ def load_config() -> Config:
         static_dir=os.environ.get("STATIC_DIR", static_default),
         login_max_attempts=int(os.environ.get("LOGIN_MAX_ATTEMPTS", "10")),
         login_window_seconds=int(os.environ.get("LOGIN_WINDOW_SECONDS", "300")),
+        # A multi-year history is well under 1 MB; the default bound is far above
+        # that yet small enough to refuse an abusive upload (R10).
+        ingest_max_upload_bytes=int(
+            os.environ.get("INGEST_MAX_UPLOAD_BYTES", str(5_000_000))
+        ),
     )
