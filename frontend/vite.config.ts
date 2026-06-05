@@ -34,6 +34,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
-    include: ["../features/foundation-001/tests/frontend/**/*.test.{ts,tsx}"],
+    include: [
+      "../features/foundation-001/tests/frontend/**/*.test.{ts,tsx}",
+      "../features/ingestion-003/tests/frontend/**/*.test.{ts,tsx}",
+    ],
   },
 });

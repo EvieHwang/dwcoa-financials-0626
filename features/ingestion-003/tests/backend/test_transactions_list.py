@@ -76,7 +76,7 @@ def test_includes_all_types(admin_client, app_env):
     con = connect(db_path)
     try:
         transfer_cat = con.execute(
-            "SELECT id FROM categories WHERE type='Transfer' LIMIT 1"
+            "SELECT id FROM categories WHERE type IN ('Transfer', 'Internal') LIMIT 1"
         ).fetchone()[0]
     finally:
         con.close()

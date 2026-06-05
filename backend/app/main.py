@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from .auth import RateLimiter
 from .config import load_config
 from .migrations import run_migrations
-from .routers import admin, auth, health, reference
+from .routers import admin, auth, health, reference, transactions
 from .seed import seed_reference_data
 from .static import register_spa
 
@@ -38,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(reference.router)
     app.include_router(admin.router)
+    app.include_router(transactions.router)
 
     # SPA fallback registered last.
     register_spa(app, config.static_dir)

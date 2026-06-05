@@ -8,6 +8,7 @@ dependencies = [
     "uvicorn[standard]>=0.27",
     "PyJWT>=2.8",
     "bcrypt>=4.1",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
@@ -34,4 +35,5 @@ include = ["app*"]
 testpaths = [
     "../features/foundation-001/tests/backend",
     "../features/legacy-migration-002/tests/backend",
+    "../features/ingestion-003/tests/backend",
 ]
