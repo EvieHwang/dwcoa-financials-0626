@@ -52,7 +52,12 @@ describe("budget editor", () => {
     await waitFor(() =>
       expect(screen.getByText(/\$4,500\.00/)).toBeInTheDocument(),
     );
-    expect(screen.getByText("Insurance Premiums")).toBeInTheDocument();
+    // Scope the category lookup to the budget region: the shared reference
+    // categories also render as <option>s in the admin rules editor, so a global
+    // getByText("Insurance Premiums") is non-unique. The asserted behavior — the
+    // budget editor renders the category name — is unchanged.
+    const region = screen.getByRole("region", { name: /budget/i });
+    expect(within(region).getByText("Insurance Premiums")).toBeInTheDocument();
   });
 
   it("admin_save_posts_integer_cents", async () => {
