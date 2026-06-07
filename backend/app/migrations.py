@@ -118,6 +118,39 @@ MIGRATIONS: list[tuple[int, str]] = [
         );
         """,
     ),
+    (
+        3,
+        # Rules-categorization (slice 4): additive, idempotent (guarded by the
+        # schema_migrations version gate, so the un-guardable ADD COLUMNs run at
+        # most once). It (a) adds nullable rule-condition columns, (b) adds a
+        # nullable per-transaction categorization-source marker, (c) inserts the
+        # transfer rule ONLY into an already-populated categorize_rules (the
+        # migrated-production case — on a fresh DB the table is empty here and the
+        # seed owns the transfer rule, so this never pre-empts the seed's
+        # empty-table base-rule insert; see R8 ordering), and (d) flags the
+        # uncategorized migrated backlog into the review queue while leaving
+        # categorized history frozen.
+        """
+        ALTER TABLE categorize_rules ADD COLUMN account TEXT;
+        ALTER TABLE categorize_rules ADD COLUMN amount_min INTEGER;
+        ALTER TABLE categorize_rules ADD COLUMN amount_max INTEGER;
+
+        ALTER TABLE transactions ADD COLUMN category_source TEXT;
+
+        INSERT INTO categorize_rules
+            (pattern, category_id, confidence, priority, active,
+             account, amount_min, amount_max)
+        SELECT 'Transfer', c.id, 100, 200, 1, NULL, NULL, NULL
+        FROM categories c
+        WHERE c.name = 'Transfers'
+          AND EXISTS (SELECT 1 FROM categorize_rules)
+          AND NOT EXISTS (
+              SELECT 1 FROM categorize_rules r WHERE r.category_id = c.id
+          );
+
+        UPDATE transactions SET needs_review = 1 WHERE category_id IS NULL;
+        """,
+    ),
 ]
 
 

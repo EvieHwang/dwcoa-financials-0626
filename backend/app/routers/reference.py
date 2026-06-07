@@ -30,9 +30,9 @@ def reference(request: Request, _role: str = Depends(require_auth)):
             )
         ]
         categories = [
-            {"name": row["name"], "type": row["type"]}
+            {"id": row["id"], "name": row["name"], "type": row["type"]}
             for row in con.execute(
-                "SELECT name, type FROM categories WHERE active = 1 ORDER BY id"
+                "SELECT id, name, type FROM categories WHERE active = 1 ORDER BY id"
             )
         ]
     finally:

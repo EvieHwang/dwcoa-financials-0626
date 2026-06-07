@@ -36,4 +36,5 @@ testpaths = [
     "../features/foundation-001/tests/backend",
     "../features/legacy-migration-002/tests/backend",
     "../features/ingestion-003/tests/backend",
+    "../features/rules-categorization-004/tests/backend",
 ]

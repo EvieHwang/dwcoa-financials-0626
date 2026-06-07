@@ -13,6 +13,7 @@ interface Account {
 }
 
 interface Category {
+  id?: number;
   name: string;
 }
 
@@ -20,6 +21,19 @@ interface Reference {
   units: Unit[];
   accounts: Account[];
   categories: Category[];
+}
+
+interface Rule {
+  id: number;
+  pattern: string;
+  category_id: number;
+  category: string | null;
+  account: string | null;
+  amount_min: number | null;
+  amount_max: number | null;
+  priority: number;
+  confidence: number;
+  active: number | boolean;
 }
 
 interface Transaction {
@@ -34,6 +48,7 @@ interface Transaction {
   status: string;
   balance: number;
   category: string | null;
+  needs_review?: number | boolean;
 }
 
 interface TransactionsResponse {
@@ -161,6 +176,23 @@ function DashboardShell({ role, onLogout }: { role: Role; onLogout: () => void }
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  // Categorization state (admin only): the review queue, the rules list, the
+  // single create-rule form (also driven by "Create rule" in the review queue),
+  // and a reload token bumped after every mutation so the queue/table/rules
+  // reflect the sweep.
+  const [reviewTxns, setReviewTxns] = useState<Transaction[]>([]);
+  const [reviewTotal, setReviewTotal] = useState(0);
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [reviewCat, setReviewCat] = useState<Record<number, string>>({});
+  const [ruleForm, setRuleForm] = useState({ pattern: "", category_id: "" });
+  const [composingReviewId, setComposingReviewId] = useState<number | null>(null);
+  const [adminReload, setAdminReload] = useState(0);
+  const [adminDataLoaded, setAdminDataLoaded] = useState(false);
+
+  const categories = reference?.categories ?? [];
+  const firstCatId = categories[0]?.id;
+  const defaultCatValue = firstCatId !== undefined ? String(firstCatId) : "";
+
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -252,6 +284,95 @@ function DashboardShell({ role, onLogout }: { role: Role; onLogout: () => void }
     setReloadToken((t) => t + 1);
   }
 
+  // Load the review queue and the rules list (admin only), refreshed whenever a
+  // mutation bumps the reload token.
+  useEffect(() => {
+    if (role !== "admin") return;
+    let active = true;
+    void (async () => {
+      const [queueRes, rulesRes] = await Promise.all([
+        fetch("/api/transactions?needs_review=true", { credentials: "include" }),
+        fetch("/api/rules", { credentials: "include" }),
+      ]);
+      if (active) {
+        if (queueRes.ok) {
+          const data = (await queueRes.json()) as TransactionsResponse;
+          setReviewTxns(data.transactions ?? []);
+          setReviewTotal(data.total ?? 0);
+        } else {
+          setReviewTxns([]);
+          setReviewTotal(0);
+        }
+      }
+      if (active) {
+        if (rulesRes.ok) {
+          const data = (await rulesRes.json()) as { rules: Rule[] };
+          setRules(data.rules ?? []);
+        } else {
+          setRules([]);
+        }
+      }
+      if (active) setAdminDataLoaded(true);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [role, adminReload]);
+
+  function refreshAfterMutation() {
+    setAdminReload((t) => t + 1);
+    setReloadToken((t) => t + 1);
+  }
+
+  async function handleSaveFix(txn: Transaction) {
+    const catId = Number(reviewCat[txn.id] ?? defaultCatValue);
+    await fetch(`/api/transactions/${txn.id}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ category_id: catId }),
+    });
+    refreshAfterMutation();
+  }
+
+  async function handleCreateRuleFromReview(txn: Transaction) {
+    let pattern = txn.description;
+    const res = await fetch(
+      `/api/rules/suggest?description=${encodeURIComponent(txn.description)}`,
+      { credentials: "include" },
+    );
+    if (res.ok) {
+      const data = (await res.json()) as { pattern?: string };
+      pattern = data.pattern ?? txn.description;
+    }
+    setComposingReviewId(txn.id);
+    setRuleForm({
+      pattern,
+      category_id: reviewCat[txn.id] ?? defaultCatValue,
+    });
+  }
+
+  async function handleCreateRule() {
+    const catId = Number(ruleForm.category_id || defaultCatValue);
+    await fetch("/api/rules", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pattern: ruleForm.pattern, category_id: catId }),
+    });
+    setRuleForm({ pattern: "", category_id: "" });
+    setComposingReviewId(null);
+    refreshAfterMutation();
+  }
+
+  async function handleDeleteRule(ruleId: number) {
+    await fetch(`/api/rules/${ruleId}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    refreshAfterMutation();
+  }
+
   const hasNextPage = offset + limit < total;
   const hasPrevPage = offset > 0;
 
@@ -315,6 +436,137 @@ function DashboardShell({ role, onLogout }: { role: Role; onLogout: () => void }
               )}
             </div>
           )}
+        </section>
+      )}
+
+      {role === "admin" && adminDataLoaded && (
+        <section data-testid="review-queue" aria-label="Review queue">
+          <h2>
+            Review queue{" "}
+            <span data-testid="review-count" aria-label={`${reviewTotal} transactions need review`}>
+              {reviewTotal}
+            </span>
+          </h2>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Date</th>
+                <th scope="col">Description</th>
+                <th scope="col">Amount</th>
+                <th scope="col">Category</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reviewTxns.map((t) => (
+                <tr key={t.id}>
+                  <td>{t.post_date}</td>
+                  <td>{t.description}</td>
+                  <td>{centsToUsd(t.debit ?? t.credit)}</td>
+                  <td>
+                    <select
+                      aria-label="Category"
+                      value={reviewCat[t.id] ?? defaultCatValue}
+                      onChange={(e) =>
+                        setReviewCat((prev) => ({ ...prev, [t.id]: e.target.value }))
+                      }
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id ?? c.name} value={String(c.id ?? "")}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <button type="button" onClick={() => handleSaveFix(t)}>
+                      Save
+                    </button>
+                    {composingReviewId === null && (
+                      <button
+                        type="button"
+                        onClick={() => handleCreateRuleFromReview(t)}
+                      >
+                        Create rule
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {role === "admin" && adminDataLoaded && (
+        <section data-testid="rules-editor" aria-label="Rules editor">
+          <h2>Categorization rules</h2>
+
+          <div>
+            <label htmlFor="rule-pattern">Pattern</label>
+            <input
+              id="rule-pattern"
+              type="text"
+              value={ruleForm.pattern}
+              onChange={(e) =>
+                setRuleForm((prev) => ({ ...prev, pattern: e.target.value }))
+              }
+            />
+            <label htmlFor="rule-category">Category</label>
+            <select
+              id="rule-category"
+              value={ruleForm.category_id || defaultCatValue}
+              onChange={(e) =>
+                setRuleForm((prev) => ({ ...prev, category_id: e.target.value }))
+              }
+            >
+              {categories.map((c) => (
+                <option key={c.id ?? c.name} value={String(c.id ?? "")}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={handleCreateRule}>
+              Create rule
+            </button>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Pattern</th>
+                <th scope="col">Category</th>
+                <th scope="col">Conditions</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Active</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rules.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.pattern}</td>
+                  <td>{r.category}</td>
+                  <td>
+                    {[
+                      r.account ? `acct=${r.account}` : null,
+                      r.amount_min !== null ? `min=${r.amount_min}` : null,
+                      r.amount_max !== null ? `max=${r.amount_max}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "—"}
+                  </td>
+                  <td>{r.priority}</td>
+                  <td>{r.active ? "Yes" : "No"}</td>
+                  <td>
+                    <button type="button" onClick={() => handleDeleteRule(r.id)}>
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
       )}
 
