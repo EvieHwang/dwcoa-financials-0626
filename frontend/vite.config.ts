@@ -37,6 +37,7 @@ export default defineConfig({
     include: [
       "../features/foundation-001/tests/frontend/**/*.test.{ts,tsx}",
       "../features/ingestion-003/tests/frontend/**/*.test.{ts,tsx}",
+      "../features/rules-categorization-004/tests/frontend/**/*.test.{ts,tsx}",
     ],
   },
 });

@@ -170,6 +170,14 @@ def seed_reference_data(db_path: str) -> None:
                 for pattern, name in CATEGORIZE_RULES
                 if name in cat_ids
             ]
+            # The transfer rule (R8): an ordinary rule, pinned to pattern
+            # "Transfer" at priority 200 so it outranks the base rules' 100. On a
+            # fresh DB the seed owns it (inserted here, in the same empty-table
+            # branch as the base rules); the v3 migration owns it on an
+            # already-populated production DB. The two paths are mutually
+            # exclusive by table state, so exactly one transfer rule exists.
+            if "Transfers" in cat_ids:
+                rule_rows.append(("Transfer", cat_ids["Transfers"], 100, 200, 1))
             con.executemany(
                 "INSERT INTO categorize_rules "
                 "(pattern, category_id, confidence, priority, active) "

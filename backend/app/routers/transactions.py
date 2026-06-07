@@ -14,9 +14,10 @@ import sqlite3
 from fastapi import (
     APIRouter, Depends, File, HTTPException, Request, UploadFile, status,
 )
+from pydantic import BaseModel
 
 from .. import auth as auth_mod
-from .. import ingest
+from .. import categorize, ingest, recategorize
 from ..db import get_connection
 from ..dependencies import require_admin, require_auth
 
@@ -25,12 +26,18 @@ router = APIRouter(prefix="/api/transactions")
 DEFAULT_PAGE_LIMIT = 100
 MAX_PAGE_LIMIT = 1000
 
+# Categorization verdict columns are written alongside the row on insert (R2).
 _INSERT_SQL = (
     "INSERT INTO transactions "
     "(account_number, account_name, post_date, check_number, description, "
-    "debit, credit, status, balance) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "debit, credit, status, balance, category_id, auto_category_id, "
+    "category_source, confidence, needs_review) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
+
+
+class CategorizePayload(BaseModel):
+    category_id: int
 
 
 def _reject_cross_origin(request: Request) -> None:
@@ -109,8 +116,15 @@ async def upload_transactions(
             )
         }
 
+        # Load the active rules once and categorize each newly inserted row
+        # inside the same atomic insert transaction (R2). Deduped rows are not
+        # touched, so an existing row's category / source / review state survive.
+        rules = recategorize.load_active_rules(con)
+
         added = 0
         store_skipped = 0
+        categorized = 0
+        needs_review_count = 0
         try:
             for row in result.rows:
                 key = ingest.dedup_key(
@@ -120,11 +134,26 @@ async def upload_transactions(
                 if key in existing:
                     store_skipped += 1
                     continue
+                verdict = categorize.match(
+                    row.description, row.account_name, row.debit, row.credit,
+                    rules,
+                )
+                if verdict.needs_review:
+                    cat_id = auto_id = source = conf = None
+                    flagged = 1
+                    needs_review_count += 1
+                else:
+                    cat_id = auto_id = verdict.category_id
+                    source = "auto"
+                    conf = verdict.confidence
+                    flagged = 0
+                    categorized += 1
                 con.execute(
                     _INSERT_SQL,
                     (row.account_number, row.account_name, row.post_date,
                      row.check_number, row.description, row.debit, row.credit,
-                     row.status, row.balance),
+                     row.status, row.balance, cat_id, auto_id, source, conf,
+                     flagged),
                 )
                 existing.add(key)
                 added += 1
@@ -148,7 +177,43 @@ async def upload_transactions(
         "unknown_account_count": len(result.unknown_accounts),
         "unknown_accounts": result.unknown_accounts,
         "total": added + skipped_duplicate,
+        # Additive categorization counts (R2); existing fields unchanged.
+        "categorized": categorized,
+        "needs_review": needs_review_count,
     }
+
+
+@router.patch("/{txn_id}")
+def categorize_transaction(
+    txn_id: int,
+    request: Request,
+    payload: CategorizePayload,
+    _role: str = Depends(require_admin),
+):
+    """Manually set one transaction's category (sticky): source becomes
+    `manual`, `needs_review` clears, and no later rule sweep touches it (R4)."""
+    _reject_cross_origin(request)
+
+    db_path = request.app.state.config.database_path
+    con = get_connection(db_path)
+    try:
+        if con.execute(
+            "SELECT 1 FROM categories WHERE id = ?", (payload.category_id,)
+        ).fetchone() is None:
+            raise HTTPException(status_code=400, detail="Unknown category")
+        if con.execute(
+            "SELECT 1 FROM transactions WHERE id = ?", (txn_id,)
+        ).fetchone() is None:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        con.execute(
+            "UPDATE transactions SET category_id = ?, category_source = 'manual', "
+            "needs_review = 0, updated_at = datetime('now') WHERE id = ?",
+            (payload.category_id, txn_id),
+        )
+        con.commit()
+    finally:
+        con.close()
+    return {"id": txn_id, "category_id": payload.category_id, "needs_review": 0}
 
 
 @router.get("")
@@ -156,6 +221,7 @@ def list_transactions(
     request: Request,
     year: int | None = None,
     account: str | None = None,
+    needs_review: bool | None = None,
     limit: int = DEFAULT_PAGE_LIMIT,
     offset: int = 0,
     _role: str = Depends(require_auth),
@@ -175,6 +241,10 @@ def list_transactions(
     if account is not None:
         where.append("t.account_name = ?")
         params.append(account)
+    if needs_review is not None:
+        # The review-queue filter (R3): only flagged rows when true.
+        where.append("t.needs_review = ?")
+        params.append(1 if needs_review else 0)
     clause = (" WHERE " + " AND ".join(where)) if where else ""
 
     db_path = request.app.state.config.database_path
@@ -186,7 +256,7 @@ def list_transactions(
         rows = con.execute(
             "SELECT t.id, t.account_number, t.account_name, t.post_date, "
             "t.check_number, t.description, t.debit, t.credit, t.status, "
-            "t.balance, c.name AS category "
+            "t.balance, t.needs_review, c.name AS category "
             "FROM transactions t LEFT JOIN categories c ON t.category_id = c.id"
             f"{clause} ORDER BY t.post_date DESC, t.id DESC LIMIT ? OFFSET ?",
             params + [limit, offset],
