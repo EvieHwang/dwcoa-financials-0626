@@ -113,6 +113,19 @@ def category_id_by_type(db_path, type_):
         con.close()
 
 
+def set_category_active(db_path, *, category_id, active):
+    """Toggle a category's active flag directly (for R1 inactive-exclusion)."""
+    con = connect(db_path)
+    try:
+        con.execute(
+            "UPDATE categories SET active = ? WHERE id = ?",
+            (1 if active else 0, category_id),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
 def insert_budget(db_path, *, year, category_id, annual_amount, timing=None):
     """Insert/replace a budget row directly, bypassing the API under test."""
     con = connect(db_path)

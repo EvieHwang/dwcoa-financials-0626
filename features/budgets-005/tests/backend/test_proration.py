@@ -74,3 +74,14 @@ def test_effective_timing_override_beats_default():
     assert effective_timing("annual", "monthly") == "annual"
     assert effective_timing(None, "monthly") == "monthly"
     assert effective_timing(None, "quarterly") == "quarterly"
+
+
+def test_override_drives_proration_not_category_default():
+    # A line whose category default is monthly but whose override is annual must
+    # prorate as annual (full from January), not as monthly (3/12). This pins the
+    # resolve-then-prorate composition so a caller can't wire the default timing.
+    eff = effective_timing("annual", "monthly")
+    assert prorated_ytd(ANNUAL, eff, date(2025, 3, 1), YEAR) == ANNUAL  # not 30000
+    # And the inverse: no override falls back to the monthly default's stepping.
+    eff_default = effective_timing(None, "monthly")
+    assert prorated_ytd(ANNUAL, eff_default, date(2025, 3, 1), YEAR) == 30000

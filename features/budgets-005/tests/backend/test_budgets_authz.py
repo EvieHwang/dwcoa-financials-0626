@@ -3,7 +3,8 @@
 """R1/R2/R3/R4/R6 auth + CSRF (Reuses pattern: foundation auth + same-origin)."""
 from conftest import category_id, get_budget_row, insert_budget
 
-YEAR = 2025
+# Unseeded year (seed.py only seeds 2025) so "no write happened" assertions hold.
+YEAR = 2030
 
 # A cross-origin Origin header to trip the same-origin (CSRF) guard on writes.
 CROSS = {"Origin": "https://evil.example"}

@@ -8,9 +8,12 @@ from conftest import (
     count_budgets,
     get_budget_row,
     insert_budget,
+    set_category_active,
 )
 
-YEAR = 2025
+# An unseeded year: seed.py only seeds 2025, so this year starts with no budget
+# rows — letting the zero-fill / uniqueness / count assertions mean what they say.
+YEAR = 2030
 
 
 # --- R1: read ---------------------------------------------------------------
@@ -53,6 +56,26 @@ def test_list_includes_only_budgetable_then_rows(admin_client, app_env):
     insert_budget(db, year=YEAR, category_id=internal, annual_amount=5000)
     body = admin_client.get(f"/api/budgets?year={YEAR}").json()
     assert any(b["category_id"] == internal for b in body["budgets"])
+
+
+def test_list_excludes_inactive_category_without_row(admin_client, app_env):
+    # An Income/Expense category that is inactive AND has no row for the year is
+    # excluded (only *active* budgetable categories are zero-filled).
+    db = app_env["db_path"]
+    cid = category_id(db, "Fire Alarm")
+    set_category_active(db, category_id=cid, active=False)
+    body = admin_client.get(f"/api/budgets?year={YEAR}").json()
+    assert all(b["category_id"] != cid for b in body["budgets"])
+
+
+def test_list_includes_inactive_category_with_row(admin_client, app_env):
+    # ...but if that inactive category has a row for the year, it stays visible.
+    db = app_env["db_path"]
+    cid = category_id(db, "Fire Alarm")
+    insert_budget(db, year=YEAR, category_id=cid, annual_amount=330000)
+    set_category_active(db, category_id=cid, active=False)
+    body = admin_client.get(f"/api/budgets?year={YEAR}").json()
+    assert any(b["category_id"] == cid for b in body["budgets"])
 
 
 def test_list_rejects_bad_year(admin_client):

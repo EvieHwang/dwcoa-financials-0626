@@ -266,4 +266,20 @@ the API directly. View-only users see the budget but no edit controls.
 ---
 
 ## Adversarial gate
-[populated after Stage 4]
+
+**Mode:** independent clean-context sub-agent (Stage 4), one pass. It verified
+the R7 proration arithmetic, the HTTP status codes against the reused FastAPI
+patterns, the money discipline, the GET contract's internal consistency, and the
+scope boundaries (no drift into Dashboard-006 / Dues-007 / category management) —
+all sound. No security findings (so no re-gate). Findings and disposition:
+
+| # | Severity | Lens | Finding | Disposition |
+|---|----------|------|---------|-------------|
+| 1 | HIGH | Integrity / Coverage (tests) | Many `@frozen` tests assumed year 2025 starts empty, but `seed.py` seeds ~20 budget rows for 2025 — so zero-fill, `count==1/2/0`, and copy-into-2025 assertions could never pass against the real seed. | **Fixed** — retargeted all DB-backed budget-year fixtures to unseeded years (2029/2030/2031); proration tests stay on 2025 (pure, no DB). Seed is production truth and tests are frozen, so the fixtures moved, not the seed. |
+| 2 | MEDIUM | Coverage (tests) | R1's "active Income/Expense" zero-fill/exclusion was under-tested; no test that an inactive category without a row is excluded. | **Fixed** — added `test_list_excludes_inactive_category_without_row` and `test_list_includes_inactive_category_with_row`. |
+| 3 | MEDIUM | Coverage (tests) | `effective_timing` and `prorated_ytd` were never composed in one test, so a build could prorate the category default instead of the override and still pass. | **Fixed** — added `test_override_drives_proration_not_category_default`. |
+| 4 | LOW | Coverage (tests) | `test_copy_rejects_empty_source` copied into seeded 2025, so its 400 could fire for the wrong rule (409 vs empty-source). | **Fixed** — both source and target now unseeded/empty, isolating the empty-source rule. |
+| 5 | LOW | Coverage (tests) | Frontend `viewer_sees_no_write_controls` falls back to `document.body` when no named budget region exists. | **Proceeded** — the gate itself rated this acceptable under the `@scaffolding` tag; tightening would over-constrain markup. The `waitForBudget()` precondition mitigates it. |
+
+No findings were acknowledged as residual risk, so `constitution.md`'s
+Acknowledged-risks table is unchanged.
