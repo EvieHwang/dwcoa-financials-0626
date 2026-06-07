@@ -66,6 +66,23 @@ interface UploadSummary {
   total: number;
 }
 
+interface BudgetLine {
+  category_id: number;
+  category_name: string;
+  category_type: string;
+  annual_amount: number;
+  timing: string | null;
+  category_default_timing: string;
+  effective_timing: string;
+}
+
+interface BudgetResponse {
+  year: number;
+  locked: boolean;
+  locked_at: string | null;
+  budgets: BudgetLine[];
+}
+
 type AuthState =
   | { status: "loading" }
   | { status: "unauthenticated" }
@@ -157,6 +174,178 @@ function yearOptions(): number[] {
   // years; not clock-fragile (clamped so the lower bound stays well below today).
   const startYear = Math.max(new Date().getFullYear(), 2026);
   return Array.from({ length: startYear - 2018 }, (_, i) => startYear - i);
+}
+
+// The budget editor (R8): reads a year's budget (R1), and for an admin issues
+// upsert (R2, integer cents at the boundary), copy-year (R3, confirming then
+// retrying with overwrite on a 409), and lock/unlock (R4). A viewer sees the
+// budget read-only — no save / copy / lock controls. A locked year disables the
+// amount inputs. The proration engine (R7) is backend-only this slice, so the
+// editor shows planned annual amounts, not prorated YTD.
+function BudgetEditor({ role }: { role: Role }) {
+  const isAdmin = role === "admin";
+  const [budgetYear] = useState(() =>
+    String(Math.max(new Date().getFullYear(), 2025)),
+  );
+  const [data, setData] = useState<BudgetResponse | null>(null);
+  const [edits, setEdits] = useState<Record<number, string>>({});
+  const [reload, setReload] = useState(0);
+  const [copyConflict, setCopyConflict] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const res = await fetch(`/api/budgets?year=${budgetYear}`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        if (active) setData(null);
+        return;
+      }
+      const body = (await res.json()) as BudgetResponse;
+      if (active) {
+        setData(body);
+        setEdits({});
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [budgetYear, reload]);
+
+  if (!data) return null;
+  const locked = data.locked;
+
+  function dollarsValue(line: BudgetLine): string {
+    const edited = edits[line.category_id];
+    if (edited !== undefined) return edited;
+    return String(line.annual_amount / 100);
+  }
+
+  async function handleSave() {
+    if (!data) return;
+    for (const line of data.budgets) {
+      const edited = edits[line.category_id];
+      if (edited === undefined) continue;
+      // Dollars are converted to integer cents at the API boundary.
+      const cents = Math.round(Number(edited) * 100);
+      await fetch("/api/budgets", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          year: data.year,
+          category_id: line.category_id,
+          annual_amount: cents,
+        }),
+      });
+    }
+    setReload((t) => t + 1);
+  }
+
+  async function postCopy(overwrite: boolean) {
+    if (!data) return null;
+    return fetch("/api/budgets/copy", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        from_year: data.year - 1,
+        to_year: data.year,
+        ...(overwrite ? { overwrite: true } : {}),
+      }),
+    });
+  }
+
+  async function handleCopy() {
+    const res = await postCopy(false);
+    if (!res) return;
+    if (res.status === 409) {
+      // Target non-empty: surface a confirmation and retry with overwrite.
+      setCopyConflict(true);
+      return;
+    }
+    setCopyConflict(false);
+    if (res.ok) setReload((t) => t + 1);
+  }
+
+  async function handleCopyConfirm() {
+    await postCopy(true);
+    setCopyConflict(false);
+    setReload((t) => t + 1);
+  }
+
+  async function handleLock() {
+    if (!data) return;
+    await fetch("/api/budgets/lock", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ year: data.year, locked: !data.locked }),
+    });
+    setReload((t) => t + 1);
+  }
+
+  return (
+    <section aria-label="Budget">
+      <h2>Budget {data.year}</h2>
+      {isAdmin && (
+        <div>
+          <button type="button" onClick={handleSave} disabled={locked}>
+            Save
+          </button>
+          <button type="button" onClick={handleCopy} disabled={locked}>
+            Copy year
+          </button>
+          <button type="button" onClick={handleLock}>
+            {locked ? "Unlock year" : "Lock year"}
+          </button>
+          {copyConflict && (
+            <button type="button" onClick={handleCopyConfirm}>
+              Overwrite
+            </button>
+          )}
+          {locked && <span role="status">Year locked</span>}
+        </div>
+      )}
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Category</th>
+            <th scope="col">Annual budget</th>
+            <th scope="col">Timing</th>
+            {isAdmin && <th scope="col">Edit (USD)</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {data.budgets.map((line) => (
+            <tr key={line.category_id}>
+              <td>{line.category_name}</td>
+              <td>{centsToUsd(line.annual_amount)}</td>
+              <td>{line.effective_timing}</td>
+              {isAdmin && (
+                <td>
+                  <input
+                    type="number"
+                    step="0.01"
+                    aria-label={`${line.category_name} amount`}
+                    value={dollarsValue(line)}
+                    disabled={locked}
+                    onChange={(e) =>
+                      setEdits((prev) => ({
+                        ...prev,
+                        [line.category_id]: e.target.value,
+                      }))
+                    }
+                  />
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
 }
 
 function DashboardShell({ role, onLogout }: { role: Role; onLogout: () => void }) {
@@ -569,6 +758,8 @@ function DashboardShell({ role, onLogout }: { role: Role; onLogout: () => void }
           </table>
         </section>
       )}
+
+      <BudgetEditor role={role} />
 
       <section>
         <h2>Transactions</h2>
