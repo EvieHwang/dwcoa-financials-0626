@@ -83,6 +83,54 @@ interface BudgetResponse {
   budgets: BudgetLine[];
 }
 
+interface SummaryLine {
+  category_id: number;
+  name: string;
+  annual_budget: number;
+  prorated_budget: number;
+  actual: number;
+  remaining: number;
+}
+
+interface Summary {
+  annual_budget: number;
+  prorated_budget: number;
+  actual: number;
+  remaining: number;
+  categories: SummaryLine[];
+}
+
+interface AccountBalance {
+  name: string;
+  balance: number;
+  beginning_balance: number;
+}
+
+interface ReserveFund {
+  budget: number;
+  contributions: number;
+  expenses: number;
+  net: number;
+  beginning_balance: number;
+}
+
+interface MonthlyCashflow {
+  month: number;
+  income: number;
+  expenses: number;
+}
+
+interface DashboardData {
+  as_of_date: string;
+  year: number;
+  accounts: AccountBalance[];
+  total_cash: number;
+  income_summary: Summary;
+  expense_summary: Summary;
+  reserve_fund: ReserveFund;
+  monthly_cashflow: MonthlyCashflow[];
+}
+
 type AuthState =
   | { status: "loading" }
   | { status: "unauthenticated" }
@@ -348,6 +396,157 @@ function BudgetEditor({ role }: { role: Role }) {
   );
 }
 
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// The association-level financial dashboard (slice 6): read-only for both roles.
+// Fetches GET /api/dashboard?as_of=<date> and renders account balances + total
+// cash, income & expense budget-vs-actual summaries (prorated to the as-of date),
+// the reserve-fund block, and a simple monthly income-vs-expense series — all in
+// USD. The as-of date control drives a refetch. No write control lives here.
+function Dashboard() {
+  const [asOf, setAsOf] = useState<string>(() => todayIso());
+  const [data, setData] = useState<DashboardData | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const res = await fetch(`/api/dashboard?as_of=${asOf}`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        if (active) setData(null);
+        return;
+      }
+      const body = (await res.json()) as DashboardData;
+      if (active) setData(body);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [asOf]);
+
+  return (
+    <section aria-label="Financial dashboard">
+      <h2>Financial dashboard</h2>
+
+      <div>
+        <label htmlFor="dashboard-as-of">As of</label>
+        <input
+          id="dashboard-as-of"
+          type="date"
+          value={asOf}
+          onChange={(e) => setAsOf(e.target.value)}
+        />
+      </div>
+
+      {data && (
+        <>
+          <section aria-label="Account balances">
+            <h3>Account balances</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Account</th>
+                  <th scope="col">Balance</th>
+                  <th scope="col">Beginning of year</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.accounts.map((a) => (
+                  <tr key={a.name}>
+                    <td>{a.name}</td>
+                    <td>{centsToUsd(a.balance)}</td>
+                    <td>{centsToUsd(a.beginning_balance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p>
+              Total cash: <strong>{centsToUsd(data.total_cash)}</strong>
+            </p>
+          </section>
+
+          <SummaryTable title="Income" summary={data.income_summary} />
+          <SummaryTable title="Expenses" summary={data.expense_summary} />
+
+          <section aria-label="Reserve fund">
+            <h3>Reserve fund</h3>
+            <dl>
+              <dt>Budget (to date)</dt>
+              <dd>{centsToUsd(data.reserve_fund.budget)}</dd>
+              <dt>Contributions</dt>
+              <dd>{centsToUsd(data.reserve_fund.contributions)}</dd>
+              <dt>Expenses</dt>
+              <dd>{centsToUsd(data.reserve_fund.expenses)}</dd>
+              <dt>Net</dt>
+              <dd>{centsToUsd(data.reserve_fund.net)}</dd>
+              <dt>Beginning balance</dt>
+              <dd>{centsToUsd(data.reserve_fund.beginning_balance)}</dd>
+            </dl>
+          </section>
+
+          <section aria-label="Monthly cashflow">
+            <h3>Monthly income vs. expense</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Month</th>
+                  <th scope="col">Income</th>
+                  <th scope="col">Expenses</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.monthly_cashflow.map((m) => (
+                  <tr key={m.month}>
+                    <td>{m.month}</td>
+                    <td>{centsToUsd(m.income)}</td>
+                    <td>{centsToUsd(m.expenses)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        </>
+      )}
+    </section>
+  );
+}
+
+// One income/expense summary: a row per category with annual budget, prorated
+// budget-to-date, actual-to-date, and remaining — all USD. Totals live in the
+// payload but are not rendered as a duplicate USD row here.
+function SummaryTable({ title, summary }: { title: string; summary: Summary }) {
+  return (
+    <section aria-label={`${title} summary`}>
+      <h3>{title}</h3>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Category</th>
+            <th scope="col">Annual budget</th>
+            <th scope="col">Budget to date</th>
+            <th scope="col">Actual</th>
+            <th scope="col">Remaining</th>
+          </tr>
+        </thead>
+        <tbody>
+          {summary.categories.map((line) => (
+            <tr key={line.category_id}>
+              <td>{line.name}</td>
+              <td>{centsToUsd(line.annual_budget)}</td>
+              <td>{centsToUsd(line.prorated_budget)}</td>
+              <td>{centsToUsd(line.actual)}</td>
+              <td>{centsToUsd(line.remaining)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 function DashboardShell({ role, onLogout }: { role: Role; onLogout: () => void }) {
   const [reference, setReference] = useState<Reference | null>(null);
 
@@ -578,6 +777,8 @@ function DashboardShell({ role, onLogout }: { role: Role; onLogout: () => void }
           Log out
         </button>
       </header>
+
+      <Dashboard />
 
       <section aria-label="Units">
         <h2>Units</h2>

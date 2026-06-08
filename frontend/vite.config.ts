@@ -39,6 +39,7 @@ export default defineConfig({
       "../features/ingestion-003/tests/frontend/**/*.test.{ts,tsx}",
       "../features/rules-categorization-004/tests/frontend/**/*.test.{ts,tsx}",
       "../features/budgets-005/tests/frontend/**/*.test.{ts,tsx}",
+      "../features/dashboard-006/tests/frontend/**/*.test.{ts,tsx}",
     ],
   },
 });
