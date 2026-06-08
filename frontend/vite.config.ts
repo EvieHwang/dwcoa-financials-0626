@@ -40,6 +40,7 @@ export default defineConfig({
       "../features/rules-categorization-004/tests/frontend/**/*.test.{ts,tsx}",
       "../features/budgets-005/tests/frontend/**/*.test.{ts,tsx}",
       "../features/dashboard-006/tests/frontend/**/*.test.{ts,tsx}",
+      "../features/dues-by-unit-007/tests/frontend/**/*.test.{ts,tsx}",
     ],
   },
 });
