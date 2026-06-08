@@ -131,6 +131,33 @@ interface DashboardData {
   monthly_cashflow: MonthlyCashflow[];
 }
 
+interface DuesUnit {
+  unit: string;
+  ownership_per_mille: number;
+  carryover: number;
+  annual_dues: number;
+  expected_total: number;
+  paid: number;
+  outstanding: number;
+}
+
+interface DuesTotals {
+  carryover: number;
+  annual_dues: number;
+  expected_total: number;
+  paid: number;
+  outstanding: number;
+}
+
+interface DuesData {
+  as_of_date: string;
+  year: number;
+  dues_tracked: boolean;
+  operating_budget: number;
+  units: DuesUnit[];
+  totals: DuesTotals;
+}
+
 type AuthState =
   | { status: "loading" }
   | { status: "unauthenticated" }
@@ -408,6 +435,7 @@ function todayIso(): string {
 function Dashboard() {
   const [asOf, setAsOf] = useState<string>(() => todayIso());
   const [data, setData] = useState<DashboardData | null>(null);
+  const [dues, setDues] = useState<DuesData | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -421,6 +449,26 @@ function Dashboard() {
       }
       const body = (await res.json()) as DashboardData;
       if (active) setData(body);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [asOf]);
+
+  // The per-unit dues table shares the dashboard's as-of date control: changing
+  // it refetches both the dashboard payload and the dues table.
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const res = await fetch(`/api/dues?as_of=${asOf}`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        if (active) setDues(null);
+        return;
+      }
+      const body = (await res.json()) as DuesData;
+      if (active) setDues(body);
     })();
     return () => {
       active = false;
@@ -509,6 +557,52 @@ function Dashboard() {
             </table>
           </section>
         </>
+      )}
+
+      <DuesByUnit dues={dues} />
+    </section>
+  );
+}
+
+// The association-wide, per-unit dues table embedded in the dashboard. Reads
+// GET /api/dues for the shared as-of date and renders one row per unit with its
+// ownership, carryover, annual dues, expected, paid, and outstanding as USD.
+// Read-only for both roles (no write control); a pre-2025 ("not tracked")
+// payload renders a clear note instead of unit rows.
+function DuesByUnit({ dues }: { dues: DuesData | null }) {
+  return (
+    <section aria-label="Dues by unit">
+      <h3>Dues by unit</h3>
+      {dues && !dues.dues_tracked && (
+        <p>Per-unit dues tracking begins 2025; not tracked for earlier dates.</p>
+      )}
+      {dues && dues.dues_tracked && (
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Unit</th>
+              <th scope="col">Ownership</th>
+              <th scope="col">Carryover</th>
+              <th scope="col">Annual dues</th>
+              <th scope="col">Expected</th>
+              <th scope="col">Paid</th>
+              <th scope="col">Outstanding</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dues.units.map((u) => (
+              <tr key={u.unit}>
+                <td>{u.unit}</td>
+                <td>{(u.ownership_per_mille / 10).toFixed(1)}%</td>
+                <td>{centsToUsd(u.carryover)}</td>
+                <td>{centsToUsd(u.annual_dues)}</td>
+                <td>{centsToUsd(u.expected_total)}</td>
+                <td>{centsToUsd(u.paid)}</td>
+                <td>{centsToUsd(u.outstanding)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </section>
   );

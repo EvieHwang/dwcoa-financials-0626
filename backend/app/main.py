@@ -19,6 +19,7 @@ from .routers import (
     auth,
     budgets,
     dashboard,
+    dues,
     health,
     reference,
     rules,
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(rules.router)
     app.include_router(budgets.router)
     app.include_router(dashboard.router)
+    app.include_router(dues.router)
 
     # SPA fallback registered last.
     register_spa(app, config.static_dir)
