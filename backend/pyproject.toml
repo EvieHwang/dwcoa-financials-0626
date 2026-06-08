@@ -40,4 +40,5 @@ testpaths = [
     "../features/budgets-005/tests/backend",
     "../features/dashboard-006/tests/backend",
     "../features/dues-by-unit-007/tests/backend",
+    "../features/my-account-008/tests/backend",
 ]
