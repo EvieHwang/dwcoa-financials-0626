@@ -158,6 +158,47 @@ interface DuesData {
   totals: DuesTotals;
 }
 
+interface AccountCurrentYear {
+  year: number;
+  carryover: number;
+  annual_dues: number;
+  total_due: number;
+  paid_ytd: number;
+  remaining_balance: number;
+}
+
+interface AccountPriorYear {
+  year: number;
+  data_available: boolean;
+  annual_dues_budgeted: number | null;
+  total_paid: number | null;
+  balance_carried_forward: number;
+}
+
+interface PaymentGuidance {
+  standard_monthly: number;
+  months_remaining: number;
+  suggested_monthly: number | null;
+  status: "owes" | "paid_in_full" | "credit" | "due_by_year_end";
+}
+
+interface RecentPayment {
+  date: string;
+  amount: number;
+}
+
+interface AccountData {
+  unit: string;
+  ownership_per_mille: number;
+  as_of_date: string;
+  year: number;
+  dues_tracked: boolean;
+  current_year: AccountCurrentYear | null;
+  prior_year: AccountPriorYear | null;
+  payment_guidance: PaymentGuidance | null;
+  recent_payments: RecentPayment[];
+}
+
 type AuthState =
   | { status: "loading" }
   | { status: "unauthenticated" }
@@ -432,7 +473,7 @@ function todayIso(): string {
 // cash, income & expense budget-vs-actual summaries (prorated to the as-of date),
 // the reserve-fund block, and a simple monthly income-vs-expense series — all in
 // USD. The as-of date control drives a refetch. No write control lives here.
-function Dashboard() {
+function Dashboard({ units }: { units: Unit[] }) {
   const [asOf, setAsOf] = useState<string>(() => todayIso());
   const [data, setData] = useState<DashboardData | null>(null);
   const [dues, setDues] = useState<DuesData | null>(null);
@@ -560,6 +601,148 @@ function Dashboard() {
       )}
 
       <DuesByUnit dues={dues} />
+
+      {data && <MyAccount units={units} asOf={asOf} />}
+    </section>
+  );
+}
+
+// localStorage key for the homeowner's self-selected unit (a convenience, not an
+// authorization boundary — the choice is remembered across visits).
+const MY_ACCOUNT_UNIT_KEY = "dwcoa.my-account.unit";
+
+const GUIDANCE_NOTE: Record<PaymentGuidance["status"], string> = {
+  owes: "",
+  paid_in_full: "You're paid in full for this year.",
+  credit: "You have a credit on your account.",
+  due_by_year_end: "The remaining balance is due by December 31.",
+};
+
+// The per-unit homeowner statement (slice 8), embedded in the dashboard so it
+// shares the single "As of" date control. A homeowner self-selects their unit
+// (remembered in localStorage); until then a prompt shows and no /api/account
+// call is made. Selecting a unit fetches GET /api/account?unit=<n>&as_of=<asOf>
+// and renders the current-year figures, payment guidance, and recent payments as
+// USD. Read-only for both roles; a not-tracked (pre-2025) payload renders a note.
+function MyAccount({ units, asOf }: { units: Unit[]; asOf: string }) {
+  const [unit, setUnit] = useState<string>(
+    () => localStorage.getItem(MY_ACCOUNT_UNIT_KEY) ?? "",
+  );
+  const [data, setData] = useState<AccountData | null>(null);
+
+  useEffect(() => {
+    if (!unit) {
+      setData(null);
+      return;
+    }
+    let active = true;
+    void (async () => {
+      const res = await fetch(
+        `/api/account?unit=${encodeURIComponent(unit)}&as_of=${asOf}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) {
+        if (active) setData(null);
+        return;
+      }
+      const body = (await res.json()) as AccountData;
+      if (active) setData(body);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [unit, asOf]);
+
+  function handleSelect(value: string) {
+    setUnit(value);
+    if (value) localStorage.setItem(MY_ACCOUNT_UNIT_KEY, value);
+    else localStorage.removeItem(MY_ACCOUNT_UNIT_KEY);
+  }
+
+  // Render nothing until the unit list has loaded, so the selector always has its
+  // options the moment the section appears.
+  if (units.length === 0) return null;
+
+  const cy = data?.current_year;
+  const guidance = data?.payment_guidance;
+
+  return (
+    <section aria-label="My Account">
+      <h3>My Account</h3>
+
+      <div>
+        <label htmlFor="my-account-unit">Your unit</label>
+        <select
+          id="my-account-unit"
+          value={unit}
+          onChange={(e) => handleSelect(e.target.value)}
+        >
+          <option value="">Choose a unit…</option>
+          {units.map((u) => (
+            <option key={u.number} value={u.number}>
+              {u.number}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {!unit && <p>Select your unit to view your statement.</p>}
+
+      {unit && data && !data.dues_tracked && (
+        <p>Per-unit dues tracking begins 2025; not tracked for earlier dates.</p>
+      )}
+
+      {unit && data && data.dues_tracked && cy && guidance && (
+        <>
+          <section aria-label="This year">
+            <h4>This year ({cy.year})</h4>
+            <dl>
+              <dt>Balance carried over</dt>
+              <dd>{centsToUsd(cy.carryover)}</dd>
+              <dt>Annual dues</dt>
+              <dd>{centsToUsd(cy.annual_dues)}</dd>
+              <dt>Total due</dt>
+              <dd>{centsToUsd(cy.total_due)}</dd>
+              <dt>Remaining balance</dt>
+              <dd>{centsToUsd(cy.remaining_balance)}</dd>
+            </dl>
+          </section>
+
+          <section aria-label="Payment guidance">
+            <h4>Payment guidance</h4>
+            <dl>
+              <dt>Standard monthly</dt>
+              <dd>{centsToUsd(guidance.standard_monthly)}</dd>
+              {guidance.status === "owes" && guidance.suggested_monthly !== null ? (
+                <>
+                  <dt>Suggested monthly to stay current</dt>
+                  <dd>{centsToUsd(guidance.suggested_monthly)}</dd>
+                </>
+              ) : (
+                <>
+                  <dt>Status</dt>
+                  <dd>{GUIDANCE_NOTE[guidance.status]}</dd>
+                </>
+              )}
+            </dl>
+          </section>
+
+          <section aria-label="Recent payments">
+            <h4>Recent payments</h4>
+            {data.recent_payments.length === 0 ? (
+              <p>No recent payments.</p>
+            ) : (
+              <ul>
+                {data.recent_payments.map((p, i) => (
+                  <li key={`${p.date}-${i}`}>
+                    {p.date}: {centsToUsd(p.amount)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
     </section>
   );
 }
@@ -872,7 +1055,7 @@ function DashboardShell({ role, onLogout }: { role: Role; onLogout: () => void }
         </button>
       </header>
 
-      <Dashboard />
+      <Dashboard units={reference?.units ?? []} />
 
       <section aria-label="Units">
         <h2>Units</h2>

@@ -15,6 +15,7 @@ from .auth import RateLimiter
 from .config import load_config
 from .migrations import run_migrations
 from .routers import (
+    account,
     admin,
     auth,
     budgets,
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(budgets.router)
     app.include_router(dashboard.router)
     app.include_router(dues.router)
+    app.include_router(account.router)
 
     # SPA fallback registered last.
     register_spa(app, config.static_dir)
