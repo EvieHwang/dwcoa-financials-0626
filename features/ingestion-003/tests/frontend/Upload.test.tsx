@@ -3,7 +3,7 @@
 // the markup/test-ids, logging it, as long as these BEHAVIORS hold: admin-only
 // visibility, POST to the upload endpoint, and a rendered result summary.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "@/App";
 import { stubFetch, calledUrls, REFERENCE, TRANSACTIONS } from "./helpers";
 
@@ -13,6 +13,14 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+
+// visual-redesign-009: screens sit behind sidebar navigation. Reaching the Import
+// (admin) or Transactions screen takes one nav step; the behavioral assertions are
+// unchanged. Logged in features/visual-redesign-009/build-deviations.md.
+async function gotoNav(name: RegExp) {
+  const nav = await screen.findByRole("navigation");
+  fireEvent.click(within(nav).getByRole("button", { name }));
+}
 
 function baseRoutes(role: "admin" | "viewer", extra = {}) {
   return {
@@ -27,6 +35,7 @@ describe("CSV upload control", () => {
   it("admin_sees_upload_input", async () => {
     stubFetch(baseRoutes("admin"));
     render(<App />);
+    await gotoNav(/import|upload/i);
     await waitFor(() =>
       expect(screen.getByLabelText(/csv|file|upload/i)).toBeInTheDocument(),
     );
@@ -35,6 +44,7 @@ describe("CSV upload control", () => {
   it("viewer_does_not_see_upload_input", async () => {
     stubFetch(baseRoutes("viewer"));
     render(<App />);
+    await gotoNav(/transactions/i);
     // wait for the authenticated shell to settle (a transaction row renders)
     await waitFor(() =>
       expect(screen.getByText("Dividend/Interest")).toBeInTheDocument(),
@@ -57,6 +67,7 @@ describe("CSV upload control", () => {
       }),
     );
     render(<App />);
+    await gotoNav(/import|upload/i);
 
     const input = (await screen.findByLabelText(/csv|file|upload/i)) as HTMLInputElement;
     const file = new File(["Account Number,Post Date\n"], "history.csv", {

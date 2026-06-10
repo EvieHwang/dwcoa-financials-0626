@@ -1,3 +1,147 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ============================================================
+   DWCOA Financials — design tokens (visual-redesign-009)
+   Modern fintech: evergreen brand, warm-neutral surfaces,
+   tabular figures, hairline structure, soft elevation.
+   Light is the default (:root); dark is activated by the
+   `.dark` class on <html> (matches tailwind.config darkMode:"class").
+   A `[data-theme="dark"]` alias is kept in sync by the theme hook.
+   ============================================================ */
+
+:root {
+  /* radii */
+  --r-card: 16px;
+  --r-ctrl: 10px;
+  --r-pill: 999px;
+  --r-sm: 8px;
+
+  /* type */
+  --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+
+  /* ---- LIGHT (default) ---- */
+  --bg: #f4f6f3;
+  --bg-grad: radial-gradient(1200px 600px at 80% -10%, #eaf3ec 0%, rgba(234, 243, 236, 0) 60%);
+  --surface: #ffffff;
+  --surface-2: #fafbf9;
+  --surface-3: #f2f4f0;
+  --inset: #f6f8f4;
+
+  --ink: #14201b;
+  --ink-2: #586660;
+  --ink-3: #8a958f;
+
+  --border: #e6e9e3;
+  --border-2: #dbdfd8;
+  --hairline: #edefea;
+
+  --brand: #0f6e45;
+  --brand-ink: #0c402b;
+  --brand-soft: #e7f2eb;
+  --on-brand: #ffffff;
+
+  --pos: #168a57;
+  --pos-soft: #e4f3ea;
+  --neg: #c8453b;
+  --neg-soft: #fbeae7;
+  --amber: #b7791f;
+  --amber-soft: #fbf0db;
+  --info: #3b6e9c;
+  --info-soft: #e8f0f7;
+
+  --shadow-sm: 0 1px 2px rgba(20, 32, 27, 0.05), 0 1px 1px rgba(20, 32, 27, 0.04);
+  --shadow-md: 0 2px 4px rgba(20, 32, 27, 0.04), 0 8px 24px rgba(20, 32, 27, 0.06);
+  --shadow-lg: 0 24px 60px -20px rgba(12, 40, 27, 0.28), 0 8px 20px rgba(20, 32, 27, 0.08);
+  --ring: 0 0 0 3px rgba(15, 110, 69, 0.16);
+}
+
+/* ---- DARK ---- */
+.dark,
+[data-theme="dark"] {
+  --bg: #0a0f0c;
+  --bg-grad: radial-gradient(1200px 600px at 80% -10%, rgba(28, 72, 52, 0.4) 0%, rgba(10, 15, 12, 0) 60%);
+  --surface: #111814;
+  --surface-2: #0e1410;
+  --surface-3: #161e18;
+  --inset: #0c120e;
+
+  --ink: #ecf1ed;
+  --ink-2: #9aa8a0;
+  --ink-3: #687670;
+
+  --border: #232c26;
+  --border-2: #2c3730;
+  --hairline: #1c241f;
+
+  --brand: #34a772;
+  --brand-ink: #6fbe96;
+  --brand-soft: #16271e;
+  --on-brand: #06140d;
+
+  --pos: #3bb57c;
+  --pos-soft: #14271c;
+  --neg: #e0685c;
+  --neg-soft: #2a1714;
+  --amber: #d9a441;
+  --amber-soft: #281e0f;
+  --info: #6ba3d0;
+  --info-soft: #121e29;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.36);
+  --shadow-lg: 0 28px 64px -20px rgba(0, 0, 0, 0.7), 0 8px 24px rgba(0, 0, 0, 0.5);
+  --ring: 0 0 0 3px rgba(52, 167, 114, 0.22);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg);
+  background-image: var(--bg-grad);
+  background-attachment: fixed;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* tabular figures everywhere money lives */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+.mono {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+}
+
+/* visible focus ring on every interactive control */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--r-sm);
+}
+
+/* Meters / rings / bars animate on value change, but their RESTING state is
+   the final visible value — content is never gated behind an entrance
+   animation. Honor reduced-motion by disabling the transitions entirely. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

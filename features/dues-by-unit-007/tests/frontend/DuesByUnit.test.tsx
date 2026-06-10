@@ -32,6 +32,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// visual-redesign-009: Dues by unit is now its own nav screen (it was embedded in
+// the dashboard); reaching it takes one nav step. The shared "As of" control still
+// lives in the shell. Behavioral assertions are unchanged. Logged in
+// build-deviations.md.
+async function gotoDues() {
+  const nav = await screen.findByRole("navigation");
+  fireEvent.click(within(nav).getByRole("button", { name: /dues/i }));
+}
+
 function routes(role: "admin" | "viewer", extra = {}) {
   return {
     "/api/auth/me": { body: { role } },
@@ -60,6 +69,7 @@ describe("dues by unit", () => {
   it("renders_dues_rows_from_endpoint", async () => {
     stubFetch(routes("viewer"));
     render(<App />);
+    await gotoDues();
     await waitForDues();
 
     const region = duesRegion();
@@ -74,6 +84,7 @@ describe("dues by unit", () => {
   it("as_of_change_refetches_dues", async () => {
     const fn = stubFetch(routes("viewer"));
     render(<App />);
+    await gotoDues();
     await waitForDues();
 
     const initial = callsTo(fn, "/api/dues").length;
@@ -92,6 +103,7 @@ describe("dues by unit", () => {
   it("viewer_sees_same_readonly_dues", async () => {
     stubFetch(routes("viewer"));
     render(<App />);
+    await gotoDues();
     await waitForDues();
 
     const region = duesRegion();
@@ -105,9 +117,10 @@ describe("dues by unit", () => {
   it("shows_not_tracked_note", async () => {
     stubFetch(routes("viewer", { "/api/dues": { body: DUES_NOT_TRACKED } }));
     render(<App />);
-    // Wait for the dashboard to settle (total cash $9,000.00 from DASHBOARD).
+    await gotoDues();
+    // Wait for the dues screen to settle (the not-tracked note renders).
     await waitFor(() =>
-      expect(screen.getAllByText(/\$9,000\.00/).length).toBeGreaterThan(0),
+      expect(screen.getByText(/2025|not tracked|begins/i)).toBeInTheDocument(),
     );
 
     const region = duesRegion();

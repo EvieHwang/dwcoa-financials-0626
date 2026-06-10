@@ -28,6 +28,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// visual-redesign-009: the budget editor is now a nav screen; reaching it takes
+// one nav step. Behavioral assertions are unchanged. Logged in build-deviations.md.
+async function gotoBudget() {
+  const nav = await screen.findByRole("navigation");
+  fireEvent.click(within(nav).getByRole("button", { name: /budget/i }));
+}
+
 function routes(role: "admin" | "viewer", extra = {}) {
   return {
     "/api/auth/me": { body: { role } },
@@ -49,6 +56,7 @@ describe("budget editor", () => {
   it("renders_amounts_as_usd_from_endpoint", async () => {
     stubFetch(routes("admin"));
     render(<App />);
+    await gotoBudget();
     await waitFor(() =>
       expect(screen.getByText(/\$4,500\.00/)).toBeInTheDocument(),
     );
@@ -63,6 +71,7 @@ describe("budget editor", () => {
   it("admin_save_posts_integer_cents", async () => {
     const fn = stubFetch(routes("admin"));
     render(<App />);
+    await gotoBudget();
     await waitForBudget();
 
     // Edit the Insurance Premiums line to $5,000 and save it.
@@ -85,6 +94,7 @@ describe("budget editor", () => {
     // with overwrite:true.
     const fn = stubFetch(routes("admin", { "/api/budgets/copy": { status: 409 } }));
     render(<App />);
+    await gotoBudget();
     await waitForBudget();
 
     fireEvent.click(screen.getByRole("button", { name: /copy/i }));
@@ -102,6 +112,7 @@ describe("budget editor", () => {
   it("lock_toggle_posts_lock", async () => {
     const fn = stubFetch(routes("admin"));
     render(<App />);
+    await gotoBudget();
     await waitForBudget();
 
     fireEvent.click(screen.getByRole("button", { name: /lock/i }));
@@ -118,6 +129,7 @@ describe("budget editor", () => {
       }),
     );
     render(<App />);
+    await gotoBudget();
     await waitForBudget();
 
     // No enabled amount input for editing a locked year.
@@ -133,6 +145,7 @@ describe("budget editor", () => {
   it("viewer_sees_no_write_controls", async () => {
     stubFetch(routes("viewer"));
     render(<App />);
+    await gotoBudget();
     await waitForBudget();
 
     // The budget is visible, but no save / copy / lock controls for a viewer.

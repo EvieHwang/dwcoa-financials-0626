@@ -42,6 +42,7 @@ export default defineConfig({
       "../features/dashboard-006/tests/frontend/**/*.test.{ts,tsx}",
       "../features/dues-by-unit-007/tests/frontend/**/*.test.{ts,tsx}",
       "../features/my-account-008/tests/frontend/**/*.test.{ts,tsx}",
+      "../features/visual-redesign-009/tests/frontend/**/*.test.{ts,tsx}",
     ],
   },
 });

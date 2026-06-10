@@ -14,6 +14,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// visual-redesign-009: the rules editor is now an admin nav screen; reaching it
+// (or the Transactions screen, for the viewer-absence check) takes one nav step.
+// Behavioral assertions are unchanged. Logged in build-deviations.md.
+async function gotoNav(name: RegExp) {
+  const nav = await screen.findByRole("navigation");
+  fireEvent.click(within(nav).getByRole("button", { name }));
+}
+
 function baseRoutes(role: "admin" | "viewer", extra = {}) {
   return {
     "/api/auth/me": { body: { role } },
@@ -30,6 +38,7 @@ describe("rules editor", () => {
   it("admin_sees_rules_table_with_accessible_headers", async () => {
     stubFetch(baseRoutes("admin"));
     render(<App />);
+    await gotoNav(/rules/i);
     const editor = await screen.findByTestId("rules-editor");
 
     // The seeded rule renders (pattern + its category).
@@ -45,6 +54,7 @@ describe("rules editor", () => {
   it("viewer_does_not_see_rules_editor", async () => {
     stubFetch(baseRoutes("viewer"));
     render(<App />);
+    await gotoNav(/transactions/i);
     await waitFor(() =>
       expect(screen.getByText(/ZZQ UNRECOGNIZED VENDOR/i)).toBeInTheDocument(),
     );
@@ -54,6 +64,7 @@ describe("rules editor", () => {
   it("create_rule_posts_pattern_and_category", async () => {
     const fn = stubFetch(baseRoutes("admin"));
     render(<App />);
+    await gotoNav(/rules/i);
     const editor = await screen.findByTestId("rules-editor");
 
     fireEvent.change(within(editor).getByLabelText(/pattern/i), {
@@ -74,6 +85,7 @@ describe("rules editor", () => {
   it("delete_rule_calls_endpoint", async () => {
     const fn = stubFetch(baseRoutes("admin"));
     render(<App />);
+    await gotoNav(/rules/i);
     const editor = await screen.findByTestId("rules-editor");
 
     fireEvent.click(within(editor).getByRole("button", { name: /delete|remove/i }));
