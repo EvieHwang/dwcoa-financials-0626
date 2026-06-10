@@ -31,7 +31,7 @@ a decision, not made silently.
 - **Single-writer assumption.** Only the treasurer writes; concurrent editing is not a design concern. Reads (board, homeowners) are unrestricted.
 - **Rules-only categorization.** Transaction categorization is deterministic pattern-matching plus a manual review queue — no LLM calls anywhere in the system. "Learning" happens by suggesting a reusable rule when the treasurer fixes a reviewed transaction.
 - **Idempotent ingestion.** The treasurer always uploads the full transaction history; the server dedups (post date + amount + description) so re-uploading is safe and never duplicates rows or clobbers existing categories.
-- **The dashboard is the report.** The primary dashboard view must remain print-clean (fits on a page via browser print) and have a matching PDF export. This is a product constraint, not a nice-to-have — reporting is a first-class output, never an afterthought bolted onto a screen-only UI.
+- **The dashboard is the on-screen report.** The primary dashboard view is the board's at-a-glance financial report and must stay legible, trustworthy, and self-contained on screen. (Print-clean layout + matching PDF export were originally required here but have been **retired** — never implemented, judged unused; see decision log 2026-06-10. If a real need for paper/PDF reporting re-emerges it returns as its own slice with a recorded decision.)
 - **Data portability.** The treasurer role rotates; all data must be exportable as CSV with no proprietary lock-in, and the schema must be documented.
 
 [Add further app-specific principles below as they are decided.]
@@ -61,7 +61,7 @@ a decision, not made silently.
 - **Financial calculations are tested against worked examples.** Budget YTD proration (each timing pattern), dues expected/paid/outstanding, per-unit carryover, and transfers-excluded income/expense totals each have tests with hand-verified numbers. A weak test here is worse than none.
 - **Ingestion dedup is tested for idempotency.** Re-uploading the same (or overlapping) history produces no duplicate rows and preserves existing categories.
 - **Auth is enforced server-side.** Tests confirm view-only sessions cannot reach admin endpoints and that role is never taken from client input.
-- **The dashboard prints to one page** and the PDF export matches it — verified, not assumed.
+- ~~**The dashboard prints to one page** and the PDF export matches it~~ — **retired** 2026-06-10 (print/PDF requirement dropped at the project level; see decision log). The dashboard is verified as a clean on-screen report instead.
 - **Post-deploy health check passes.** A deploy is successful only when the live Fly app returns healthy from a health endpoint within a bounded retry window (a `flyctl deploy` zero exit is not sufficient).
 
 [Add further app-specific gates below as they are established.]
@@ -112,6 +112,8 @@ See `declaration.md` § Out of scope for the canonical list. In brief, this code
 | 2026-06-03 | Keep two shared passwords (admin / view-only), hardened server-side | Trust-based 9-unit HOA; per-user accounts are unjustified overhead, but verification moves server-side to close OWASP gaps |
 | 2026-06-03 | Migrate the live production DB (not fresh seed) | Existing budgets, past-dues, rules, and transactions must carry over; actual S3 pull runs from a local session with AWS access |
 | 2026-06-04 | Cut transaction CSV export from the Ingestion slice (deviation from the "all data exportable as CSV" portability principle) | Owner has never used it and the data is now far richer; portability is met instead by the copyable SQLite file + documented schema. May return with the reporting slice if a real need emerges. Dropping it also removes the CSV-formula-injection-on-export surface. |
+| 2026-06-10 | Retire the print-clean dashboard + matching-PDF requirement at the project level (visual-redesign-009) | Never implemented; dashboard-006 had already cut it locally; the on-screen dashboard is the report. Softens the "dashboard is the report" principle and the matching quality gate. Returns as its own slice with a recorded decision if a real paper/PDF need emerges. |
+| 2026-06-10 | Use custom Tailwind + CSS-variable design primitives for the visual redesign instead of the shadcn/ui default (visual-redesign-009) | The Mercury/Ramp-style fintech look and its custom charts (meters, progress ring, bar/stack charts) are bespoke; shadcn/Radix would add a dependency for little gain and not provide the charts. Recorded as a deviation from the "shadcn/ui" frontend pattern. |
 
 ## Acknowledged risks
 *Cross-feature accumulation surface. Each adversarial-gate finding the owner marks `acknowledged` gets one row here so the project never silently forgets that it knowingly took on risk. Severity is the unmitigated severity — an acknowledged HIGH stays HIGH. Populated by `/spec` when a finding is acknowledged.*

@@ -47,6 +47,9 @@ describe("theme", () => {
 
   it("no_matchmedia_defaults_light", async () => {
     setPrefersDark(null); // no window.matchMedia at all
+    // Guard: prove the deletion actually took, so this test can't silently pass
+    // against an implementation that calls a still-present matchMedia.
+    expect(window.matchMedia).toBeUndefined();
     stubFetch(routes("viewer"));
     expect(() => render(<App />)).not.toThrow();
     await waitForShell();
@@ -62,6 +65,11 @@ describe("theme", () => {
     // Switch to dark.
     toggle.click();
     await waitFor(() => expect(rootIsDark()).toBe(true));
+
+    // The preference must land in a real persistence layer (localStorage), not an
+    // in-memory module variable that a true browser reload would lose. We assert
+    // something was written without pinning the key (the key is @scaffolding).
+    expect(localStorage.length).toBeGreaterThan(0);
 
     // Tear down and clear ONLY the root indicator (keep the persisted preference),
     // so a restored dark theme can only come from storage, not leftover DOM state.

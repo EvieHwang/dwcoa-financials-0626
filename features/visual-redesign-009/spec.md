@@ -71,6 +71,11 @@ Acceptance:
 - The sidebar collapses to a drawer toggled by a control (accessible name matches
   `/menu|navigation/i`) below the narrow breakpoint; this is a presentation detail
   not asserted pixel-wise.
+- The **"As of" date is a single, app-level control that lives in the shell** (topbar),
+  not inside any one screen, and **persists across screen swaps**. Overview, Dues, and
+  My account all read this one shared as-of; changing it refetches whichever of those
+  screens is currently active. This preserves today's single-control refetch behavior
+  (see Reuse) — see **Design → Shared "As of"**.
 
 ### US-3 — Role-gated UI from auth only (all users)
 **As** the system, **I want** the role to come only from `/api/auth/me`, **so that**
@@ -179,6 +184,29 @@ see below).
   they do not transform money beyond `centsToUsd`, do not recompute proration, and
   respect the per-endpoint ownership conversion.
 
+### Shared "As of"
+Today `Dashboard` (App.tsx ~519–606) owns the only `as_of` state and its one
+`/as of/i` control, and renders `DuesByUnit` and `MyAccount` as children — so all
+three share one as-of and three prior tests assert that changing that single control
+refetches `/api/dashboard`, `/api/dues`, and `/api/account`. The nav-switched model
+makes Dues and My account **separate screens**, so the shared control is lifted into
+the **shell (topbar)** as a single app-level as-of:
+- There is exactly **one** `/as of/i` control in the whole app, in the shell; it
+  persists across screen swaps and is **not** inside any screen's region (so a screen
+  swap, e.g. the `Nav` test asserting the Overview region unmounts, is unaffected).
+- Changing it refetches the **active** screen's data with the new date (Overview →
+  `/api/dashboard` + `/api/dues` snapshot as today's Dashboard does; Dues screen →
+  `/api/dues`; My account screen → `/api/account`).
+- **Behavioral preservation:** at the user level the behavior is identical — pick an
+  as-of, the data reflects it. The only non-user-facing change is that inactive
+  screens no longer refetch in the background (only the mounted screen does); no test
+  asserts cross-screen background refetch, so this is invisible to the suite. The 3
+  coupling tests (`dashboard-006 as_of_change_refetches`,
+  `dues-by-unit-007 as_of_change_refetches_dues`,
+  `my-account-008 as_of_change_refetches_account`) keep their assertions verbatim and
+  gain only the sanctioned navigation step to reach the target screen (Overview is
+  default and needs none).
+
 ### Preservation contract (the no-behavior-change safety net)
 The 8 prior feature suites query purely by semantics (roles, accessible names,
 labels, test-ids — verified: zero structural/`className`/`querySelector` assertions).
@@ -196,8 +224,9 @@ Anchors to preserve:
 | Surface | Anchor (role / label / test-id) |
 |---|---|
 | Login form | form accessible-name **"Log in"**; label **`/password/i`**; submit button **`/log ?in|sign ?in/i`** |
-| Dashboard | region **`/dashboard|finances|financial/i`**; `as_of` control label **`/as of/i`**; sub-regions "Account balances", "Reserve fund", "Monthly cashflow"; summary regions **`/…summary/i`** |
-| Units | unit numbers from `/api/reference` rendered as text (e.g. "101", "201") on a reachable screen |
+| Dashboard | region **`/dashboard|finances|financial/i`**; sub-regions "Account balances", "Reserve fund", "Monthly cashflow"; summary regions **`/…summary/i`** |
+| Shared As-of | **exactly one** `/as of/i` control, app-level in the **shell** (not inside any screen region); read by Overview, Dues, and My account; changing it refetches the active screen |
+| Units | unit numbers from `/api/reference` rendered as text (e.g. "101", "201") **on the default Overview screen, with no navigation** (foundation-001 asserts them on initial render); there is no standalone "Units" nav screen |
 | Transactions | year filter label **`/year/i`**; account filter label **`/account/i`**; pagination button **`/next/i`** (and prev); `columnheader`s |
 | Dues by unit | region **`/dues/i`**; pre-2025 note text **`/2025|not tracked|begins/i`** when not tracked |
 | Budget | region **`/budget/i`**; per-line amount input label **`/<category> amount/i`**; buttons **`/save/i`**, **`/copy/i`**, **`/lock/i`**; copy-confirm button **`/overwrite|confirm|yes/i`**; locked-year lock status |
@@ -213,6 +242,26 @@ added nav step) or, for anchors expected on the default screen, ensures they app
 Overview. The Overview is the default screen; the `admin-only` marker and units must be
 reachable per the table.
 
+**Additional load-bearing invariants `/build` must preserve (the prior suites assert
+these and the redesign can silently break them):**
+- **No write control inside read regions.** `dashboard-006`, `dues-by-unit-007`,
+  `my-account-008`, and `budgets-005` (viewer) assert that their region contains **no**
+  button matching `/save|upload|lock|delete|edit|pay/i`. Do not place such a control
+  (including shell affordances) inside those regions for either role.
+- **Shell control names must not collide with screen write-actions.** Persistent shell
+  controls (theme toggle, logout, menu/drawer, nav items) must **not** carry accessible
+  names matching `/save|upload|lock|delete|copy|next|create rule|add rule/i`, so the
+  global (unscoped) button lookups in the prior suites resolve to the screen, not the
+  shell. Nav items are reached via the `navigation` landmark.
+- **Scope added assertions to the active screen.** When `/build` adds a nav step to a
+  prior test and the subsequent assertion uses an unscoped query whose name could match
+  more than one mounted element, scope it to the active screen's region/test-id (most
+  prior suites already do via `within(region|queue|editor)`); never weaken or delete the
+  behavioral assertion itself. Log every prior-suite edit in `build-deviations.md`.
+- **Unique-or-scoped text.** Unit-number text on Overview (e.g. "101") must be unique
+  within the rendered Overview or the prior `getByText("101")` will throw on ambiguity;
+  keep co-mounted duplicate numbers out of Overview or scope them.
+
 ### Tokens & accessibility
 - Token values come from `frontend/design/styles.css` / README; evergreen brand only.
 - **WCAG 2.1 AA**: body and meaningful-UI text meet ≥4.5:1 (≥3:1 for large text and
@@ -221,12 +270,30 @@ reachable per the table.
   status is never conveyed by color alone (badges carry text/icon).
 - Focus-visible rings on all interactive controls; min 44px tap targets on mobile.
 
+- **Dark indicator must match Tailwind.** `tailwind.config.js` is `darkMode:"class"`,
+  so the `.dark` class is what activates `dark:` variants. If `/build` drives dark mode
+  by a `data-theme` attribute instead, it **must** also update `darkMode` (e.g.
+  `["selector", '[data-theme="dark"]']`) or add the `.dark` class — otherwise dark
+  styling silently never activates while the theme tests (tolerant of either indicator)
+  still pass. The token CSS and the Tailwind `darkMode` selector must agree.
+
 ### Standards-creep check
 WCAG 2.1 AA already applies project-wide (constitution + declaration). This feature
 absorbs it for the surfaces it builds — contrast in both themes, focus-visible,
-reduced-motion, accessible names — but does **not** undertake a full external WCAG
-audit of pre-existing copy or a formal accessibility certification; that would exceed a
-re-skin. Surfaced here rather than silently absorbed.
+reduced-motion, accessible names. Two of these are **verified manually, not by the
+automated suite**, and are called out so the gap is explicit rather than implied-covered:
+- **Contrast (≥4.5:1 text / ≥3:1 large+essential, both themes):** jsdom does not compute
+  color/contrast, so this is a manual check against the locked tokens — `--ink-3` on its
+  surfaces and amber-on-soft especially — and a `/build` acceptance item, not a test.
+- **Reduced motion:** jsdom does not compute layout/opacity and `getByText` finds
+  `opacity:0` nodes, so a "content hidden behind an entrance animation" defect would pass
+  the suites. `/build` must ensure always-on content (chart values, meters, ring,
+  balances) renders at its final visible state with no `opacity:0`/visibility gating, and
+  honors `prefers-reduced-motion`; verified manually.
+
+This feature does **not** undertake a full external WCAG audit of pre-existing copy or a
+formal accessibility certification; that would exceed a re-skin. Surfaced here rather
+than silently absorbed.
 
 ### Deviations & reuse
 - **Deviation (recorded):** custom primitives on Tailwind + CSS variables instead of
@@ -275,11 +342,29 @@ assert only the behavior the redesign introduces.
 | US-3 admin sees admin nav/controls/marker | `Role.test.tsx › admin_sees_admin_ui` |
 | US-4 login re-skin keeps form + behavior | `Login.test.tsx › renders_login_form`, `› submit_posts_password_and_errors` |
 | US-5 preservation contract (whole) | the 8 prior suites (unchanged assertions; `/build` adds nav steps) |
+| US-5 shared As-of refetch preserved | `dashboard-006 as_of_change_refetches` (default screen), `dues-by-unit-007 as_of_change_refetches_dues` + `my-account-008 as_of_change_refetches_account` (nav step added; assertions verbatim) |
 | Routing seam (one screen mounted) | `Nav.test.tsx › nav_swaps_single_screen` |
 | Role seam (role from auth only) | `Role.test.tsx › *` |
-| Theme seam (single source, persisted) | `Theme.test.tsx › *` |
+| Theme seam (single source, persisted to localStorage) | `Theme.test.tsx › *` |
+| Contrast (both themes) & reduced-motion | **manual** `/build` acceptance — not automatable in jsdom (see Standards-creep check) |
 
 ---
 
 ## Adversarial gate
-[populated after Stage 4]
+Mode: independent clean-context sub-agent (general-purpose), run once against the
+drafted spec + tests. It returned 2 HIGH, 4 MEDIUM, 2 LOW; cleared scope-drift,
+behavior-sneak, role-gating framing, and the `@scaffolding` tags. **All 8 findings
+were dispositioned `fixed`** (owner-confirmed the as-of model for the first HIGH); none
+were acknowledged, so no rows are added to constitution.md § Acknowledged risks. No
+HIGH/MEDIUM **security** finding was fixed, so no security re-gate was required.
+
+| # | Sev | Lens | Finding | Disposition |
+|---|-----|------|---------|-------------|
+| 1 | HIGH | Integrity / safety-net | Dues & My account share the Dashboard's single `as_of`; making them separate nav screens breaks 3 prior refetch-coupling tests beyond a "nav step." | **Fixed** — owner chose a single app-level **shared As-of in the shell** (§ Design → Shared "As of"); the 3 tests keep assertions verbatim and gain only a nav step. |
+| 2 | HIGH | Integrity / safety-net | Nav-step assertions in prior suites could collide with shell/other controls (unscoped `/save/i` etc.). | **Fixed** — single-screen mount mitigates; added contract rules: shell control names must not match write-action patterns, and added assertions are scoped to the active region. |
+| 3 | MED | Coverage / Integrity | Contract omitted the "no write control inside read regions" invariant and the as-of sharing. | **Fixed** — both added to the Preservation contract. |
+| 4 | MED | Integrity / safety-net | Units anchor placement loose; "101" could be ambiguous. | **Fixed** — contract: units on default Overview, no nav, unique-or-scoped. |
+| 5 | MED | Coverage / Failure modes | `no_matchmedia_defaults_light` might not exercise the no-matchMedia path. | **Fixed** — test now asserts `window.matchMedia` is undefined before render. |
+| 6 | MED | Coverage / Failure modes | `persists_across_remount` could pass against an in-memory store. | **Fixed** — test now asserts the preference is written to `localStorage`. |
+| 7 | LOW | Integrity | `rootIsDark` accepts `data-theme` while Tailwind is `darkMode:"class"`; dark styling could silently not activate. | **Fixed** — spec § Tokens requires the root indicator to match `tailwind.config`'s `darkMode`. |
+| 8 | LOW | Standards | Contrast + reduced-motion claimed but untestable in jsdom. | **Fixed** — moved to explicit **manual** `/build` acceptance in § Standards-creep + Coverage, so the gap is honest. |
