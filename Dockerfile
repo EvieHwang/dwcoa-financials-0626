@@ -30,4 +30,10 @@ RUN pip install --no-cache-dir .
 COPY --from=frontend /frontend/dist ./static
 
 EXPOSE 8080
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Trust Fly's TLS proxy so the app sees the real scheme (X-Forwarded-Proto:
+# https). Without this, request.url.scheme is "http" and the same-origin CSRF
+# guard rejects every browser login (Origin https != http) with a 403. Fly's
+# proxy is the only thing that can reach port 8080 on the internal network, so
+# trusting all forwarded-for sources is safe here.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", \
+     "--proxy-headers", "--forwarded-allow-ips", "*"]
