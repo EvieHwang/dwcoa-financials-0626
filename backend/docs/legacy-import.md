@@ -106,3 +106,37 @@ Verification checklist — the cutover is complete only when all of these hold:
 - [ ] The dashboard renders real balances, budgets, and per-unit dues — no
       phantom seed categories (e.g. there is `Interest`, not `Interest income`).
 - [ ] The local `dwcoa-legacy.db` / `dwcoa-new.db` working copies are deleted.
+
+## Cutover log
+
+A dated record of each time this runbook was executed against production, for
+audit and so a future operator can see when the live data last changed hands.
+
+### 2026-06-10 — initial production cutover
+
+First load of real production data onto the Fly volume; the app had been running
+on the freshly-seeded skeleton DB until this point.
+
+- **Source:** `s3://dwcoa-data-070840362692/dwcoa.db`, pulled locally and run
+  through `python -m app.legacy_import` (source schema validated, no mismatch).
+- **Landing:** uploaded via `fly ssh sftp` to `/data/dwcoa-new.db`, then swapped
+  into place (`mv /data/dwcoa.db /data/dwcoa.db.bak` → `mv /data/dwcoa-new.db
+  /data/dwcoa.db`) and `fly apps restart`. The prior seeded skeleton is retained
+  on the volume as `/data/dwcoa.db.bak` for rollback.
+- **Migrated file size:** 385,024 bytes.
+- **Row counts (migrated target):**
+
+  | table | rows |
+  |---|---|
+  | transactions | 1369 |
+  | budgets | 46 |
+  | categories | 27 |
+  | units | 9 |
+  | unit_past_dues | 4 |
+  | categorize_rules | 30 |
+
+- **Per-year transactions:** 2021: 172, 2022: 281, 2023: 269, 2024: 261,
+  2025: 273, 2026: 113.
+- **Locked years preserved:** 2025 and 2026.
+- **Post-restart:** machine returned healthy (1/1); startup migrations and seed
+  were no-ops against the populated DB, as designed.
