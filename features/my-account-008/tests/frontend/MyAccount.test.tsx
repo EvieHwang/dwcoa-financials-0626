@@ -40,6 +40,15 @@ afterEach(() => {
   localStorage.clear();
 });
 
+// visual-redesign-009: My account is now its own nav screen (it was embedded in
+// the dashboard); reaching it takes one nav step. The shared "As of" control still
+// lives in the shell. Behavioral assertions are unchanged. Logged in
+// build-deviations.md.
+async function gotoAccount() {
+  const nav = await screen.findByRole("navigation");
+  fireEvent.click(within(nav).getByRole("button", { name: /my account/i }));
+}
+
 function routes(role: "admin" | "viewer", extra = {}) {
   return {
     "/api/auth/me": { body: { role } },
@@ -72,6 +81,7 @@ describe("my account", () => {
   it("shows_prompt_and_selector_before_selection", async () => {
     const fn = stubFetch(routes("viewer"));
     render(<App />);
+    await gotoAccount();
     const region = await myAccountRegion();
 
     // A prompt to pick a unit, and a selector listing the nine units.
@@ -87,6 +97,7 @@ describe("my account", () => {
   it("selecting_unit_fetches_and_renders", async () => {
     const fn = stubFetch(routes("viewer"));
     render(<App />);
+    await gotoAccount();
     const region = await myAccountRegion();
 
     await selectUnit(region, "101");
@@ -105,6 +116,7 @@ describe("my account", () => {
   it("selection_persists_across_remount", async () => {
     const fn = stubFetch(routes("viewer"));
     render(<App />);
+    await gotoAccount();
     let region = await myAccountRegion();
     await selectUnit(region, "101");
     await waitFor(() =>
@@ -115,6 +127,7 @@ describe("my account", () => {
     // statement fetched without re-selecting.
     cleanup();
     render(<App />);
+    await gotoAccount();
     region = await myAccountRegion();
     await waitFor(() =>
       expect(within(region).getByText(SENTINEL)).toBeInTheDocument(),
@@ -128,6 +141,7 @@ describe("my account", () => {
   it("as_of_change_refetches_account", async () => {
     const fn = stubFetch(routes("viewer"));
     render(<App />);
+    await gotoAccount();
     const region = await myAccountRegion();
     await selectUnit(region, "101");
     await waitFor(() =>
@@ -153,6 +167,7 @@ describe("my account", () => {
   it("viewer_sees_same_readonly_account", async () => {
     stubFetch(routes("viewer"));
     render(<App />);
+    await gotoAccount();
     const region = await myAccountRegion();
     await selectUnit(region, "101");
     await waitFor(() =>
@@ -170,6 +185,7 @@ describe("my account", () => {
   it("shows_not_tracked_note", async () => {
     stubFetch(routes("viewer", { "/api/account": { body: ACCOUNT_NOT_TRACKED } }));
     render(<App />);
+    await gotoAccount();
     const region = await myAccountRegion();
     await selectUnit(region, "101");
 

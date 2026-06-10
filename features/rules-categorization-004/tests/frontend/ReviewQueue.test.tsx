@@ -16,6 +16,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// visual-redesign-009: the review queue is now an admin nav screen; reaching it
+// (or the Transactions screen, for the viewer-absence check) takes one nav step.
+// Behavioral assertions are unchanged. Logged in build-deviations.md.
+async function gotoNav(name: RegExp) {
+  const nav = await screen.findByRole("navigation");
+  fireEvent.click(within(nav).getByRole("button", { name }));
+}
+
 function baseRoutes(role: "admin" | "viewer", extra = {}) {
   return {
     "/api/auth/me": { body: { role } },
@@ -32,6 +40,7 @@ describe("review queue", () => {
   it("admin_sees_queue_with_count", async () => {
     stubFetch(baseRoutes("admin"));
     render(<App />);
+    await gotoNav(/review/i);
     const queue = await screen.findByTestId("review-queue");
     // The flagged row is listed and the count (1) is announced.
     expect(within(queue).getByText(/ZZQ UNRECOGNIZED VENDOR/i)).toBeInTheDocument();
@@ -41,6 +50,7 @@ describe("review queue", () => {
   it("viewer_does_not_see_queue", async () => {
     stubFetch(baseRoutes("viewer"));
     render(<App />);
+    await gotoNav(/transactions/i);
     // Wait for the authenticated shell to settle, then assert no queue.
     await waitFor(() =>
       expect(screen.getByText(/ZZQ UNRECOGNIZED VENDOR/i)).toBeInTheDocument(),
@@ -51,6 +61,7 @@ describe("review queue", () => {
   it("save_posts_manual_fix_for_the_row", async () => {
     const fn = stubFetch(baseRoutes("admin"));
     render(<App />);
+    await gotoNav(/review/i);
     const queue = await screen.findByTestId("review-queue");
 
     // Choose a category and Save -> PATCH /api/transactions/7 with that category.
@@ -69,6 +80,7 @@ describe("review queue", () => {
   it("create_rule_uses_suggested_pattern", async () => {
     const fn = stubFetch(baseRoutes("admin"));
     render(<App />);
+    await gotoNav(/review/i);
     const queue = await screen.findByTestId("review-queue");
 
     // Open the create-rule affordance for the flagged row.

@@ -3,7 +3,7 @@
 // long as these BEHAVIORS hold: rows render from the list endpoint, changing a
 // filter re-queries with that filter, and paging advances the offset.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "@/App";
 import { stubFetch, calledUrls, REFERENCE, TRANSACTIONS } from "./helpers";
 
@@ -11,6 +11,14 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+
+// visual-redesign-009: screens now sit behind sidebar navigation, so reaching the
+// Transactions screen takes one nav step (the behavioral assertions below are
+// otherwise unchanged). Logged in features/visual-redesign-009/build-deviations.md.
+async function gotoTransactions() {
+  const nav = await screen.findByRole("navigation");
+  fireEvent.click(within(nav).getByRole("button", { name: /transactions/i }));
+}
 
 function routes(extra = {}) {
   return {
@@ -25,6 +33,7 @@ describe("transactions table", () => {
   it("renders_rows_from_list_endpoint", async () => {
     stubFetch(routes());
     render(<App />);
+    await gotoTransactions();
     await waitFor(() =>
       expect(screen.getByText("Dividend/Interest")).toBeInTheDocument(),
     );
@@ -41,6 +50,7 @@ describe("transactions table", () => {
   it("year_filter_requeries_with_year_param", async () => {
     const fn = stubFetch(routes());
     render(<App />);
+    await gotoTransactions();
     await waitFor(() =>
       expect(screen.getByText("Dividend/Interest")).toBeInTheDocument(),
     );
@@ -55,6 +65,7 @@ describe("transactions table", () => {
   it("account_filter_requeries_with_account_param", async () => {
     const fn = stubFetch(routes());
     render(<App />);
+    await gotoTransactions();
     await waitFor(() =>
       expect(screen.getByText("Check Payment")).toBeInTheDocument(),
     );
@@ -78,6 +89,7 @@ describe("transactions table", () => {
       }),
     );
     render(<App />);
+    await gotoTransactions();
     await waitFor(() =>
       expect(screen.getByText("Dividend/Interest")).toBeInTheDocument(),
     );
